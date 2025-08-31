@@ -1,0 +1,9 @@
+{
+  "name": "jsonbin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "_worker.js",
+  "dependencies": {
+    "wrangler": "^4.33.1"
+  }
+}
