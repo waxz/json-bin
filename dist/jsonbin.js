@@ -47,6 +47,8 @@ export async function handleRequest(request, env) {
 	// redirect
 	let redirect = urlObj.searchParams.has("redirect");
 
+	// qeuery
+	let qeuery = urlObj.searchParams.has("q") ? urlObj.searchParams.get("q") : undefined;
 
 	// yes authorized, continue
 	if (request.method === "POST") {
@@ -80,7 +82,6 @@ export async function handleRequest(request, env) {
 			);
 		}
 		if (redirect) {
-
 			const value_json = await env.JSONBIN.get(pathname, { type: 'json' });
 
 			if (!value_json || !value_json.url) {
@@ -106,12 +107,30 @@ export async function handleRequest(request, env) {
 		}
 
 
+        if(qeuery){
+		    const value_json = await env.JSONBIN.get(pathname, { type: 'json' });
+			if (!value_json || !value_json[qeuery]) {
+				throw new HTTPError(
+					`${qeuery}NotFound`,
+					`${qeuery}NotFound`,
+					404,
+					"Not Found"
+				);
+			}
+			return new Response(value_json[qeuery], {
+			headers: {
+				"Content-Type": "text/html",
+			},
+		});
 
-		return new Response(value, {
+		}else{
+			return new Response(value, {
 			headers: {
 				"Content-Type": "application/json",
 			},
 		});
+		}
+		
 	} else {
 		throw new HTTPError(
 			"methodNotAllowed",
