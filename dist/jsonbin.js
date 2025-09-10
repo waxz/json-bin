@@ -50,20 +50,26 @@ export async function handleRequest(request, env) {
 	// qeuery
 	let qeuery = urlObj.searchParams.has("q") ? urlObj.searchParams.get("q") : undefined;
 
+	console.log(`redirect=${redirect}, query=${qeuery}, search:${urlObj.search}, request.url:${request.url}`)
 	// yes authorized, continue
 	if (request.method === "POST") {
 		const { pathname } = new URL(request.url);
 		let json = "";
-		try {
-			json = JSON.stringify(await request.json());
-		} catch (e) {
-			throw new HTTPError(
-				"jsonParseError",
-				"request body JSON is not valid, " + e.message,
-				400,
-				"Bad Request"
-			);
+		if (qeuery) {
+			json = `{\"${qeuery}\" : \"${await request.text()}\"}`;
+		} else {
+			try {
+				json = JSON.stringify(await request.json());
+			} catch (e) {
+				throw new HTTPError(
+					"jsonParseError",
+					"request body JSON is not valid, " + e.message,
+					400,
+					"Bad Request"
+				);
+			}
 		}
+		console.log(`Update pathname: ${pathname}, json: ${json}`)
 		await env.JSONBIN.put(pathname, json);
 		return new Response('{"ok":true}', {
 			headers: {
@@ -107,8 +113,8 @@ export async function handleRequest(request, env) {
 		}
 
 
-        if(qeuery){
-		    const value_json = await env.JSONBIN.get(pathname, { type: 'json' });
+		if (qeuery) {
+			const value_json = await env.JSONBIN.get(pathname, { type: 'json' });
 			if (!value_json || !value_json[qeuery]) {
 				throw new HTTPError(
 					`${qeuery}NotFound`,
@@ -117,20 +123,22 @@ export async function handleRequest(request, env) {
 					"Not Found"
 				);
 			}
-			return new Response(value_json[qeuery], {
-			headers: {
-				"Content-Type": "text/html",
-			},
-		});
-
-		}else{
+			const value = value_json[qeuery];
+			console.log(`Query ${qeuery}=${value}`)
 			return new Response(value, {
-			headers: {
-				"Content-Type": "application/json",
-			},
-		});
+				headers: {
+					"Content-Type": "text/html",
+				},
+			});
+
+		} else {
+			return new Response(value, {
+				headers: {
+					"Content-Type": "application/json",
+				},
+			});
 		}
-		
+
 	} else {
 		throw new HTTPError(
 			"methodNotAllowed",

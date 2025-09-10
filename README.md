@@ -9,13 +9,19 @@ A simple json store based on cloudflare KV
 ### write
 
 ```bash
-curl https://jsonbin.your-account.workers.dev/test?key=yourapi -d '{"url":"https://www.google.com"}'
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi" -d '{"url":"https://www.google.com"}'
+
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi" -d @data.json
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi&q=url" -d "https://www.google.com"
+
 ```
 
 ### read
 
 ```bash
-curl https://jsonbin.your-account.workers.dev/test?key=yourapi
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi"
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi&q=url"
+
 ```
 
 ### direct to url
@@ -59,3 +65,9 @@ Build output directory:
 | Type | Name | Value |
 |------|------|-------|
 | KV namespac | JSONBIN | jsonbin|
+
+
+## dev pages locally
+```bash
+npx wrangler pages dev ./dist -k JSONBIN=jsonbin
+```
