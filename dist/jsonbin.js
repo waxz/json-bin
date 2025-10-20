@@ -46,6 +46,7 @@ export async function handleRequest(request, env) {
 
 	// redirect
 	let redirect = urlObj.searchParams.has("redirect");
+	let encbase64 = urlObj.searchParams.has("enc");
 
 	// qeuery
 	let qeuery = urlObj.searchParams.has("q") ? urlObj.searchParams.get("q") : undefined;
@@ -55,8 +56,13 @@ export async function handleRequest(request, env) {
 	if (request.method === "POST") {
 		const { pathname } = new URL(request.url);
 		let json = "";
+		var text = await request.text();
+		if (encbase64){
+			text = btoa(text);
+		}
 		if (qeuery) {
-			json = `{\"${qeuery}\" : \"${await request.text()}\"}`;
+			json = `{\"${qeuery}\" : \"${text}\"}`;
+			
 		} else {
 			try {
 				json = JSON.stringify(await request.json());
@@ -93,7 +99,7 @@ export async function handleRequest(request, env) {
 			if (!value_json || !value_json.url) {
 				throw new HTTPError(
 					"urlNotFound",
-					"未找到URL信息",
+					"urlNotFound",
 					404,
 					"Not Found"
 				);
@@ -123,9 +129,11 @@ export async function handleRequest(request, env) {
 					"Not Found"
 				);
 			}
-			const value = value_json[qeuery];
-			console.log(`Query ${qeuery}=${value}`)
-			return new Response(value, {
+			var text = value_json[qeuery];
+		    if (encbase64){
+		    	text = atob(text);
+		    }
+			return new Response(text, {
 				headers: {
 					"Content-Type": "text/html",
 				},
@@ -147,6 +155,20 @@ export async function handleRequest(request, env) {
 			"The requested method is not allowed"
 		);
 	}
+}
+
+function escape (key, val) {
+    if (typeof(val)!="string") return val;
+    return val      
+        .replace(/[\\]/g, '\\\\')
+        .replace(/[\/]/g, '\\/')
+        .replace(/[\b]/g, '\\b')
+        .replace(/[\f]/g, '\\f')
+        .replace(/[\n]/g, '\\n')
+        .replace(/[\r]/g, '\\r')
+        .replace(/[\t]/g, '\\t')
+        .replace(/[\"]/g, '\\"')
+        .replace(/\\'/g, "\\'"); 
 }
 
 export function errorToResponse(error) {

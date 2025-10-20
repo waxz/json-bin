@@ -11,7 +11,7 @@ A simple json store based on cloudflare KV
 ```bash
 curl "https://jsonbin.your-account.workers.dev/test?key=yourapi" -d '{"url":"https://www.google.com"}'
 
-curl "https://jsonbin.your-account.workers.dev/test?key=yourapi" -d @data.json
+curl "https://jsonbin.your-account.workers.dev/test?key=yourapi" --data-binary @data.json
 curl "https://jsonbin.your-account.workers.dev/test?key=yourapi&q=url" -d "https://www.google.com"
 
 ```
