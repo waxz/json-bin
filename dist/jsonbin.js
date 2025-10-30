@@ -34,7 +34,7 @@ export
         return jsonError("Invalid token record", 500);
       }
       if (Date.now() > tokenObj.expires) {
-        try { await env.JSONBIN.delete(tokenPath); } catch (e) {}
+        try { await env.JSONBIN.delete(tokenPath); } catch (e) { }
         return jsonError("Token expired", 404);
       }
 
@@ -60,7 +60,7 @@ export
         "Content-Disposition": `attachment; filename="${sanitizeFilename(filename)}"; filename*=UTF-8''${encodeURIComponent(sanitizeFilename(filename))}`,
         "Cache-Control": "no-store",
       });
-      try { headersOut.set("Content-Length", String(value.byteLength || value.length || 0)); } catch (e) {}
+      try { headersOut.set("Content-Length", String(value.byteLength || value.length || 0)); } catch (e) { }
       return new Response(value, { headers: headersOut });
     }
 
@@ -87,7 +87,7 @@ export
     const redirect = searchParams.has("redirect") || searchParams.has("r");
 
     const downloadFlag = true; // force wget to save file cleanly
-    
+
 
     // === 1️⃣ LIST MODE ===
     if (listFlag) {
@@ -119,7 +119,9 @@ export
 
     // === 2️⃣ GET ===
     if (request.method === "GET") {
-      const storeHint = sParam || "raw";
+      let storeHint = sParam || "json";
+      if (q) storeHint = "json";
+      if (redirect) storeHint = "json";
       const isRaw = storeHint === "raw";
       const wantDownload = searchParams.has("download") || searchParams.has("dl");
       console.log(`get file: sParam:${sParam}, isRaw:${isRaw}`)
@@ -130,8 +132,9 @@ export
         if (stored) {
           let value = stored;
           console.log(`crypt:${crypt}, value:${value}`)
-          if (crypt) {value = await decryptData(value, crypt)
-          console.log(`decrypt:${crypt}, value:${value}`)
+          if (crypt) {
+            value = await decryptData(value, crypt)
+            console.log(`decrypt:${crypt}, value:${value}`)
 
           };
 
@@ -219,9 +222,9 @@ export
       let value = result.value;
       const meta = result.metadata || {};
       const filetype = meta.filetype || "application/octet-stream";
-  let filename = meta.filename || pathname.split("/").pop() || "file";
-  filename = searchParams.get("filename") || filename;
-  filename = sanitizeFilename(filename);
+      let filename = meta.filename || pathname.split("/").pop() || "file";
+      filename = searchParams.get("filename") || filename;
+      filename = sanitizeFilename(filename);
       if (!filename.includes(".")) {
         const ext = filetype.split("/")[1] || "bin";
         filename = `${filename}.${ext}`;
@@ -233,7 +236,7 @@ export
         const decryptedBase64 = await decryptData(ciphertext, crypt);
         const bytes = base64ToUint8Array(decryptedBase64);
         value = bytes.buffer;
-      
+
       }
 
       if (wantDownload) {
@@ -254,7 +257,7 @@ export
       });
       try {
         headersOut.set("Content-Length", String(value.byteLength || value.length || 0));
-      } catch (e) {}
+      } catch (e) { }
       return new Response(value, { headers: headersOut });
     }
 
@@ -299,10 +302,10 @@ export
         if (crypt) {
           dataToStore = await encryptData(dataToStore, crypt)
         };
-        await env.JSONBIN.put(pathname, dataToStore,{
+        await env.JSONBIN.put(pathname, dataToStore, {
           metadata: { crypt: crypt },
         });
-        return jsonOK({ ok: true, type: "json",crypt: crypt });
+        return jsonOK({ ok: true, type: "json", crypt: crypt });
       }
 
       if (storetype === "raw") {
@@ -320,13 +323,13 @@ export
           console.log(`233 encrypted:${encrypted}`)
           toStore = new TextEncoder().encode(encrypted).buffer;
 
-            // const utf8 =  String.fromCharCode(...new Uint8Array(buffer));
-        // const decrypted = await decryptData(utf8, crypt);
-        // console.log("12")
-        // const bytes = Uint8Array.from(atob(decrypted), (c) => c.charCodeAt(0));
-        // value = bytes.buffer;
-        // toStore = await encryptData(utf8, crypt);
-        // console.log(`store utf8:${utf8}, toStore:${toStore}`)
+          // const utf8 =  String.fromCharCode(...new Uint8Array(buffer));
+          // const decrypted = await decryptData(utf8, crypt);
+          // console.log("12")
+          // const bytes = Uint8Array.from(atob(decrypted), (c) => c.charCodeAt(0));
+          // value = bytes.buffer;
+          // toStore = await encryptData(utf8, crypt);
+          // console.log(`store utf8:${utf8}, toStore:${toStore}`)
 
 
 
