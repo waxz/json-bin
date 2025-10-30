@@ -69,5 +69,11 @@ Build output directory:
 
 ## dev pages locally
 ```bash
-npx wrangler pages dev ./dist -k JSONBIN=jsonbin
+npx wrangler pages dev ./dist -k JSONBIN=jsonbin --compatibility-date=2025-10-08
+```
+
+```bash
+curl "http://localhost:8788/code.webp?key=yourapi&c=123" --data-binary @./code.webp
+
+curl -sSL -o c.webp "http://localhost:8788/c.webp?key=yourapi&c=123&download"
 ```

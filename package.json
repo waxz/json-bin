@@ -4,6 +4,7 @@
   "type": "module",
   "main": "_worker.js",
   "dependencies": {
-    "wrangler": "^4.33.1"
+    "wrangler": "^4.33.1",
+    "hono":"^4.10.3"
   }
 }
