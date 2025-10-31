@@ -127,7 +127,7 @@ export
       if (q || isJson || redirect) storeHint = "json";
       const isRaw = storeHint === "raw";
       const wantDownload = searchParams.has("download") || searchParams.has("dl");
-      console.log(`get file: sParam:${sParam}, isRaw:${isRaw}`)
+      console.log(`get file: pathname:${pathname}, sParam:${sParam}, isRaw:${isRaw}`)
 
 
       // try json first (unless s=raw)
@@ -171,7 +171,6 @@ export
 
           // ensure value is a JSON string for downstream JSON.parse
           value = text;
-          console.log('Decrypted value for JSON retrieval', value);
 
           const disposition = `attachment; filename="${pathname.split("/").pop() || "data.json"}"`;
           const json = JSON.parse(value);
@@ -264,7 +263,6 @@ export
 
       }
 
-      console.log('Decrypted value for JSON retrieval', value);
 
       if (wantDownload) {
         const filenameForToken = sanitizeFilename(filename);
@@ -297,7 +295,7 @@ export
         else if (contentType.includes("json")) storetype = "json";
         else storetype = "raw";
       }
-      console.log(`post: storetype:${storetype} `)
+      console.log(`store file: pathname:${pathname}, storetype:${storetype} `)
 
       if (storetype === "json") {
         let existing = {};
