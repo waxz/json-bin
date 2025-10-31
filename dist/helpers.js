@@ -83,6 +83,18 @@ export function base64ToUint8Array(b64) {
   return arr;
 }
 
+// --- UTF8 <-> base64 helpers (safe for Unicode) ---
+export function utf8ToBase64(str) {
+  // Encode UTF-8 string to ArrayBuffer then to base64
+  const buf = new TextEncoder().encode(str).buffer;
+  return arrayBufferToBase64(buf);
+}
+
+export function base64ToUtf8(b64) {
+  const arr = base64ToUint8Array(b64);
+  return new TextDecoder().decode(arr);
+}
+
 // --- encryption wrappers for binary ---
 export async function encryptBinary(buffer, key) {
   const b64 = arrayBufferToBase64(buffer);

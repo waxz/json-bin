@@ -5,6 +5,8 @@ import {
   base64ToUint8Array,
   encryptBinary,
   decryptBinary,
+  utf8ToBase64,
+  base64ToUtf8,
   sanitizeFilename,
   generateToken,
   jsonOK,
@@ -86,7 +88,7 @@ export
     const q = searchParams.get("q");
     const sParam = searchParams.get("s");
     const listFlag = searchParams.has("list");
-    const encbase64 = searchParams.has("enc");
+    const encbase64 = searchParams.has("b64");
     const redirect = searchParams.has("redirect") || searchParams.has("r");
     const isJson =  pathname.endsWith(".json");  
 
@@ -225,7 +227,11 @@ export
           } else {
 
             if (json.hasOwnProperty(q)) {
-              return new Response(json[q], {
+              let text = String(json[q]);
+                  if (encbase64) {
+                    text = base64ToUtf8(text);
+                  }
+              return new Response(text, {
                 headers: {
                   "Content-Type": "text/html",
                   "Content-Disposition": disposition,
@@ -309,7 +315,7 @@ export
         }
 
         let bodyText = await request.text();
-        if (encbase64) bodyText = atob(bodyText);
+  if (encbase64) bodyText = utf8ToBase64(bodyText);
 
         if (q) {existing[q] = bodyText;}
         else {
