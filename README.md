@@ -73,7 +73,18 @@ npx wrangler pages dev ./dist -k JSONBIN=jsonbin --compatibility-date=2025-10-08
 ```
 
 ```bash
-curl "http://localhost:8788/code.webp?key=yourapi&c=123" --data-binary @./code.webp
 
-curl -sSL -o c.webp "http://localhost:8788/c.webp?key=yourapi&c=123&download"
+# json
+curl "http://localhost:8788/test/data.json?key=yourapi&c=123" --data-binary @./data.json
+curl "http://localhost:8788/test/data.json?key=yourapi&c=123"
+curl "http://localhost:8788/test/data.json?key=yourapi&c=123&s=raw"
+curl "http://localhost:8788/test/data.json?key=yourapi&c=123&q=url"
+curl "http://localhost:8788/test/data.json?key=yourapi&c=123&r=1" -i
+
+curl -sSL -o data.json "http://localhost:8788/test/data.json?key=yourapi&c=123&download"
+
+
+# binary
+curl "http://localhost:8788/test/code.webp?key=yourapi&c=123" --data-binary @./code.webp
+curl -sSL -o c.webp "http://localhost:8788/test/code.webp?key=yourapi&c=123&download"
 ```

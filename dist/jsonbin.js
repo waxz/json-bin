@@ -13,6 +13,9 @@ import {
 
 export
   async function handleRequest(request, env) {
+  const JSONBIN = await env.JSONBIN;
+  if (!JSONBIN) return jsonError("Missing env.JSONBIN", 500);
+
   try {
     const urlObj = new URL(request.url);
     const { pathname, searchParams } = urlObj;
@@ -85,6 +88,7 @@ export
     const listFlag = searchParams.has("list");
     const encbase64 = searchParams.has("enc");
     const redirect = searchParams.has("redirect") || searchParams.has("r");
+    const isJson =  pathname.endsWith(".json");  
 
     const downloadFlag = true; // force wget to save file cleanly
 
@@ -119,24 +123,55 @@ export
 
     // === 2️⃣ GET ===
     if (request.method === "GET") {
-      let storeHint = sParam || "json";
-      if (q) storeHint = "json";
-      if (redirect) storeHint = "json";
+      let storeHint = sParam || "raw";
+      if (q || isJson || redirect) storeHint = "json";
       const isRaw = storeHint === "raw";
       const wantDownload = searchParams.has("download") || searchParams.has("dl");
       console.log(`get file: sParam:${sParam}, isRaw:${isRaw}`)
 
+
       // try json first (unless s=raw)
       if (!isRaw) {
-        const stored = await env.JSONBIN.get(pathname);
-        if (stored) {
-          let value = stored;
-          console.log(`crypt:${crypt}, value:${value}`)
-          if (crypt) {
-            value = await decryptData(value, crypt)
-            console.log(`decrypt:${crypt}, value:${value}`)
+        // const stored = await env.JSONBIN.get(pathname);
+        const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
+        if (!result || !result.value) return jsonError(`${pathname} Not Found`, 404);
 
-          };
+        let value = result.value;
+        if (value) {
+          // convert ArrayBuffer/Uint8Array to UTF-8 string
+          let text;
+          if (value instanceof ArrayBuffer) {
+            text = new TextDecoder().decode(new Uint8Array(value));
+          } else if (value instanceof Uint8Array) {
+            text = new TextDecoder().decode(value);
+          } else {
+            text = String(value);
+          }
+
+          if (crypt) {
+            // stored ciphertext bytes -> utf8 string -> decrypt -> maybe base64 or plaintext JSON string
+            const ciphertext = text;
+            const decrypted = await decryptData(ciphertext, crypt);
+
+            // decrypted may be plain JSON text or a base64-encoded payload (for binary-safe storage).
+            // Try parsing as JSON first; if that fails, try base64 -> UTF-8 decode.
+            let decoded = decrypted;
+            try {
+              JSON.parse(decoded);
+            } catch (e) {
+              try {
+                const bytes = base64ToUint8Array(decrypted);
+                decoded = new TextDecoder().decode(bytes);
+              } catch (e2) {
+                // fallback: keep decrypted as-is
+              }
+            }
+            text = decoded;
+          }
+
+          // ensure value is a JSON string for downstream JSON.parse
+          value = text;
+          console.log('Decrypted value for JSON retrieval', value);
 
           const disposition = `attachment; filename="${pathname.split("/").pop() || "data.json"}"`;
           const json = JSON.parse(value);
@@ -158,12 +193,7 @@ export
 
             } else {
               if (!json.url) {
-                throw new HTTPError(
-                  "urlNotFound",
-                  "urlNotFound",
-                  404,
-                  "Not Found"
-                );
+                return jsonError(`redirect url Not Found`, 404);
               }
               url = json.url;
 
@@ -203,12 +233,7 @@ export
                 },
               });
             } else {
-              throw new HTTPError(
-                `${q} NotFound`,
-                `${q} NotFound`,
-                404,
-                "Not Found"
-              );
+              return jsonError(`${q} Not Found`, 404);
             }
           }
 
@@ -239,6 +264,8 @@ export
 
       }
 
+      console.log('Decrypted value for JSON retrieval', value);
+
       if (wantDownload) {
         const filenameForToken = sanitizeFilename(filename);
         const token = generateToken();
@@ -266,17 +293,15 @@ export
       let contentType = headers.get("content-type") || "";
       let storetype = sParam;
       if (!storetype) {
-        if (q) storetype = "json";
+        if (q || isJson) storetype = "json";
         else if (contentType.includes("json")) storetype = "json";
         else storetype = "raw";
       }
       console.log(`post: storetype:${storetype} `)
 
       if (storetype === "json") {
-        console.log("14")
         let existing = {};
         const old = await env.JSONBIN.get(pathname);
-        console.log(old.metadata)
         if (old) {
           let val = old;
           if (crypt) val = await decryptData(val, crypt);
@@ -286,10 +311,9 @@ export
         }
 
         let bodyText = await request.text();
-        console.log("11")
         if (encbase64) bodyText = atob(bodyText);
 
-        if (q) existing[q] = bodyText;
+        if (q) {existing[q] = bodyText;}
         else {
           try {
             existing = JSON.parse(bodyText);
@@ -320,16 +344,13 @@ export
         if (crypt) {
           // encrypt binary payload and store ciphertext as UTF-8 bytes
           const encrypted = await encryptBinary(buffer, crypt);
-          console.log(`233 encrypted:${encrypted}`)
           toStore = new TextEncoder().encode(encrypted).buffer;
 
           // const utf8 =  String.fromCharCode(...new Uint8Array(buffer));
           // const decrypted = await decryptData(utf8, crypt);
-          // console.log("12")
           // const bytes = Uint8Array.from(atob(decrypted), (c) => c.charCodeAt(0));
           // value = bytes.buffer;
           // toStore = await encryptData(utf8, crypt);
-          // console.log(`store utf8:${utf8}, toStore:${toStore}`)
 
 
 
