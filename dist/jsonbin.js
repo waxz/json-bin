@@ -11,6 +11,12 @@ import {
   generateToken,
   jsonOK,
   jsonError,
+  handleCORS,
+  isOriginAllowed,
+  processRequest,
+  getCORSHeaders,
+  forwardRequest,
+  addCORSHeaders
 } from './helpers.js';
 
 export
@@ -69,6 +75,11 @@ export
       return new Response(value, { headers: headersOut });
     }
 
+    //
+    if (request.method === 'OPTIONS') {
+      return handleCORS(request, env);
+    }
+
     // --- AUTH ---
     const APIKEY = env.APIKEYSECRET;
     if (!APIKEY) return jsonError("Missing env.APIKEYSECRET", 500);
@@ -90,7 +101,9 @@ export
     const listFlag = searchParams.has("list");
     const encbase64 = searchParams.has("b64");
     const redirect = searchParams.has("redirect") || searchParams.has("r");
-    const isJson =  pathname.endsWith(".json");  
+    const forward = searchParams.has("forward") || searchParams.has("f");
+
+    const isJson = pathname.endsWith(".json");
 
     const downloadFlag = true; // force wget to save file cleanly
 
@@ -214,6 +227,69 @@ export
             });
 
           }
+          if (forward) {
+            let url = "";
+            if (q && json.hasOwnProperty(q)) {
+              url = json[q];
+
+            } else {
+              if (!json.url) {
+                return jsonError(`redirect url Not Found`, 404);
+              }
+              url = json.url;
+
+            }
+
+
+            try {
+              const config = {
+                targetUrl: url,
+                allowedOrigins: env.ALLOWED_ORIGINS?.split(',') || ['*'],
+                timeout: parseInt(env.TIMEOUT || '30000'),
+                logRequests: env.LOG_REQUESTS === 'true',
+              };
+
+              // Log request details (optional)
+              if (config.logRequests) {
+                console.log('Incoming request:', {
+                  method: request.method,
+                  url: request.url,
+                  headers: Object.fromEntries(request.headers),
+                });
+              }
+
+              // Check origin if not wildcard
+              if (!isOriginAllowed(request, config.allowedOrigins)) {
+                return new Response('Origin not allowed', { status: 403 });
+              }
+
+              const processedRequest = await processRequest(request, config);
+              const response = await forwardRequest(processedRequest, config);
+
+              return addCORSHeaders(response, request, config);
+
+            }
+            catch (error) {
+              console.error('Proxy error:', error);
+
+              return new Response(
+                JSON.stringify({
+                  error: 'Proxy Error',
+                  message: error.message,
+                  timestamp: new Date().toISOString()
+                }),
+                {
+                  status: 500,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...getCORSHeaders(request, ['*'])
+                  }
+                }
+              );
+            }
+
+
+          }
 
 
 
@@ -228,9 +304,9 @@ export
 
             if (json.hasOwnProperty(q)) {
               let text = String(json[q]);
-                  if (encbase64) {
-                    text = base64ToUtf8(text);
-                  }
+              if (encbase64) {
+                text = base64ToUtf8(text);
+              }
               return new Response(text, {
                 headers: {
                   "Content-Type": "text/html",
@@ -315,9 +391,9 @@ export
         }
 
         let bodyText = await request.text();
-  if (encbase64) bodyText = utf8ToBase64(bodyText);
+        if (encbase64) bodyText = utf8ToBase64(bodyText);
 
-        if (q) {existing[q] = bodyText;}
+        if (q) { existing[q] = bodyText; }
         else {
           try {
             existing = JSON.parse(bodyText);

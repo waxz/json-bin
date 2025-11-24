@@ -129,3 +129,133 @@ export function jsonError(msg, status) {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+
+
+export async function processRequest(request, config) {
+  const url = new URL(request.url);
+  const targetUrl = new URL(url.search, config.targetUrl);
+  console.log(`processRequest: url:${url}, targetUrl:${targetUrl}`)
+  
+  
+  const headers = new Headers(request.headers);
+  const headersToRemove = [
+    'host', 'cf-connecting-ip', 'cf-ray', 'cf-visitor',
+    'cf-ipcountry', 'cdn-loop', 'x-forwarded-proto'
+  ];
+  
+  headersToRemove.forEach(header => headers.delete(header));
+  
+  // FIX: Use a different approach for body handling
+  const requestInit = {
+    method: request.method,
+    headers: headers,
+  };
+  
+  // For methods with body, pass it directly without consuming
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+    // Don't consume the body here, let fetch handle it
+    const contentLength = request.headers.get('content-length');
+    
+    if (contentLength && parseInt(contentLength) > 0) {
+      // For small bodies, read and pass as ArrayBuffer
+      if (parseInt(contentLength) < 10 * 1024 * 1024) { // < 10MB
+        requestInit.body = await request.arrayBuffer();
+      } else {
+        // For large bodies, use the stream directly
+        requestInit.body = request.body;
+        requestInit.duplex = 'half';
+      }
+    } else {
+      // Try to read the body
+      try {
+        const bodyText = await request.text();
+        if (bodyText.length > 0) {
+          requestInit.body = bodyText;
+        }
+      } catch (e) {
+        // No body or already consumed
+      }
+    }
+  }
+  
+  return new Request(targetUrl.toString(), requestInit);
+}
+
+export async function forwardRequest(request, config) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), config.timeout);
+  
+  try {
+    const response = await fetch(request, {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return new Response(response.body, response);
+    
+  } catch (error) {
+    clearTimeout(timeoutId);
+    
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${config.timeout}ms`);
+    }
+    throw error;
+  }
+}
+
+export function addCORSHeaders(response, request, config) {
+  const newHeaders = new Headers(response.headers);
+  const corsHeaders = getCORSHeaders(request, config.allowedOrigins);
+  
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    newHeaders.set(key, value);
+  });
+  
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders
+  });
+}
+
+export function handleCORS(request, env) {
+  const allowedOrigins = env.ALLOWED_ORIGINS?.split(',') || ['*'];
+  
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...getCORSHeaders(request, allowedOrigins),
+      'Access-Control-Max-Age': '86400',
+    }
+  });
+}
+
+export function getCORSHeaders(request, allowedOrigins) {
+  const origin = request.headers.get('Origin');
+  let allowOrigin = '*';
+  
+  // If specific origins are allowed, check if request origin is in the list
+  if (!allowedOrigins.includes('*') && origin) {
+    allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  } else if (origin) {
+    allowOrigin = origin;
+  }
+  
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  };
+}
+
+export function isOriginAllowed(request, allowedOrigins) {
+  if (allowedOrigins.includes('*')) return true;
+  
+  const origin = request.headers.get('Origin');
+  if (!origin) return true;
+  
+  return allowedOrigins.includes(origin);
+}
