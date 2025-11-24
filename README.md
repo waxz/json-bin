@@ -47,7 +47,8 @@ Create a KV namespace
 
 #### for workers
 
-
+Build Command:
+    npm i
 Deploy command:
 
     npx wrangler deploy ./dist/_worker.js --compatibility-date 2025-08-31
