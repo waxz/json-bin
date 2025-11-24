@@ -54,7 +54,8 @@ Deploy command:
     npx wrangler deploy ./dist/_worker.js --compatibility-date 2025-08-31
 
 #### for pages
-
+Build Command:
+    npm i
 Build output directory:
 
     dist
