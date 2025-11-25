@@ -83,6 +83,10 @@ curl "http://localhost:8788/test/data.json?key=yourapi&c=123&s=raw"
 curl "http://localhost:8788/test/data.json?key=yourapi&c=123&q=url"
 curl "http://localhost:8788/test/data.json?key=yourapi&c=123&r=1" -i
 
+curl "http://localhost:8788/test/data.json?key=yourapi" --data-binary @./data.json
+curl "http://localhost:8788/_forward/yourapi/test/data.json" -i
+
+
 curl -sSL -o data.json "http://localhost:8788/test/data.json?key=yourapi&c=123&download"
 
 

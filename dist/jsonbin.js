@@ -23,10 +23,29 @@ export
   async function handleRequest(request, env) {
   const JSONBIN = await env.JSONBIN;
   if (!JSONBIN) return jsonError("Missing env.JSONBIN", 500);
+  // --- AUTH ---
+  const APIKEY = env.APIKEYSECRET;
+  if (!APIKEY) return jsonError("Missing env.APIKEYSECRET", 500);
+  //
+  if (request.method === 'OPTIONS') {
+    return handleCORS(request, env);
+  }
+
 
   try {
     const urlObj = new URL(request.url);
-    const { pathname, searchParams } = urlObj;
+    const originPathname = urlObj.pathname;
+    const {searchParams } = urlObj;
+    const forwardPath = `/_forward/${APIKEY}`;
+    const isFowward = originPathname.startsWith(forwardPath);
+
+    var pathname = originPathname;
+    if (isFowward) {
+      pathname = originPathname.slice(forwardPath.length);
+    }
+
+
+
     const headers = request.headers;
 
     // --- public token download handler ---
@@ -75,14 +94,9 @@ export
       return new Response(value, { headers: headersOut });
     }
 
-    //
-    if (request.method === 'OPTIONS') {
-      return handleCORS(request, env);
-    }
 
-    // --- AUTH ---
-    const APIKEY = env.APIKEYSECRET;
-    if (!APIKEY) return jsonError("Missing env.APIKEYSECRET", 500);
+
+
 
     const authHeader = headers.get("Authorization");
     const keyFromQuery = searchParams.get("key");
@@ -92,7 +106,7 @@ export
       if (authHeader !== expectedHeader) return jsonError("Invalid Authorization header", 401);
     } else if (keyFromQuery) {
       if (keyFromQuery !== APIKEY) return jsonError("Invalid key query", 401);
-    } else return jsonError("Missing Authorization or key", 401);
+    } else if (!isFowward) return jsonError("Missing Authorization or key", 401);
 
 
     const crypt = searchParams.get("c");
@@ -101,7 +115,6 @@ export
     const listFlag = searchParams.has("list");
     const encbase64 = searchParams.has("b64");
     const redirect = searchParams.has("redirect") || searchParams.has("r");
-    const forward = searchParams.has("forward") || searchParams.has("f");
 
     const isJson = pathname.endsWith(".json");
 
@@ -227,7 +240,7 @@ export
             });
 
           }
-          if (forward) {
+          if (isFowward) {
             let url = "";
             if (q && json.hasOwnProperty(q)) {
               url = json[q];
