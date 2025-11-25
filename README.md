@@ -86,6 +86,9 @@ curl "http://localhost:8788/test/data.json?key=yourapi&c=123&r=1" -i
 curl "http://localhost:8788/test/data.json?key=yourapi" --data-binary @./data.json
 curl "http://localhost:8788/_forward/yourapi/test/data.json" -i
 
+curl "http://localhost:8788/openlist/config?key=yourapi&q=url" -d "https://www.bbc.com"
+
+curl "http://localhost:8788/_forward/yourapi/openlist/config"
 
 curl -sSL -o data.json "http://localhost:8788/test/data.json?key=yourapi&c=123&download"
 

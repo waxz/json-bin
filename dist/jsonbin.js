@@ -152,7 +152,7 @@ export
     // === 2️⃣ GET ===
     if (request.method === "GET") {
       let storeHint = sParam || "raw";
-      if (q || isJson || redirect) storeHint = "json";
+      if (q || isJson || redirect || isFowward) storeHint = "json";
       const isRaw = storeHint === "raw";
       const wantDownload = searchParams.has("download") || searchParams.has("dl");
       console.log(`get file: pathname:${pathname}, sParam:${sParam}, isRaw:${isRaw}`)
