@@ -134,8 +134,8 @@ export function jsonError(msg, status) {
 
 export async function processRequest(request, config) {
   const url = new URL(request.url);
-  const targetUrl = new URL(url.search, config.targetUrl);
-  console.log(`processRequest: url:${url}, targetUrl:${targetUrl}`)
+  const targetUrl = new URL(config.forwardPathname + url.search, config.targetUrl);
+  console.log(`forwardPathname: ${config.forwardPathname}, processRequest: url:${url}, targetUrl:${targetUrl}`)
   
   
   const headers = new Headers(request.headers);

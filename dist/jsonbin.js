@@ -36,12 +36,29 @@ export async function handleRequest(request, env) {
     const { searchParams } = urlObj;
     
     const forwardPath = `/_forward/${APIKEY}`;
+    const urlSplit = "/nn@@xx";
     const isForward = originPathname.startsWith(forwardPath);
 
     let pathname = originPathname;
+    let forwardPathname = "/";
+
+    console.log("pathname", pathname);
+
     if (isForward) {
       pathname = originPathname.slice(forwardPath.length);
+
+      if(pathname.includes(urlSplit)){
+
+        const pathname_list = pathname.split(urlSplit);
+        console.log("pathname_list",pathname_list);
+        pathname = pathname_list[0];
+        if(pathname_list.length > 1)
+        forwardPathname = pathname_list[1];
+
+
+      }
     }
+    console.log(`pathname:${pathname}, forwardPathname:${forwardPathname}`);
 
     const headers = request.headers;
     const crypt = searchParams.get("c");
@@ -99,6 +116,7 @@ export async function handleRequest(request, env) {
 
     // === FORWARD HANDLER (handles ALL methods) ===
     if (isForward) {
+      console.log(`isForward: ${pathname}`)
       // Fetch the config from JSONBIN
       const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
       if (!result || !result.value) {
@@ -152,9 +170,12 @@ export async function handleRequest(request, env) {
       }
 
       // Forward the request
+      console.log(`targetUrl: ${targetUrl}`)
+
       try {
         const config = {
           targetUrl: targetUrl,
+          forwardPathname : forwardPathname,
           allowedOrigins: env.ALLOWED_ORIGINS?.split(',') || ['*'],
           timeout: parseInt(env.TIMEOUT || '30000'),
           logRequests: env.LOG_REQUESTS === 'true',
