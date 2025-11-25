@@ -58,6 +58,11 @@ export async function handleRequest(request, env) {
 
       }
     }
+    // remove slash
+    if(pathname.endsWith("/") && (pathname.length > 0 )){
+      console.log(pathname, " -->", pathname.slice(0,pathname.length-1)) ; 
+      pathname = pathname.slice(0,pathname.length-1);
+    }
     console.log(`pathname:${pathname}, forwardPathname:${forwardPathname}`);
 
     const headers = request.headers;
