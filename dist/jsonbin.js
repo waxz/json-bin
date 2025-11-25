@@ -36,7 +36,7 @@ export async function handleRequest(request, env) {
     const { searchParams } = urlObj;
     
     const forwardPath = `/_forward/${APIKEY}`;
-    const urlSplit = "/nn@@xx";
+    const urlSplit = env.URLSPLIT || "/urlsplit";
     const isForward = originPathname.startsWith(forwardPath);
 
     let pathname = originPathname;
