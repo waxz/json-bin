@@ -190,7 +190,7 @@ export async function handleRequest(request, env) {
           console.log('Forwarding request:', {
             method: request.method,
             from: request.url,
-            to: targetUrl,
+            to: targetUrl+forwardPathname,
           });
         }
 

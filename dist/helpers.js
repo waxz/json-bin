@@ -130,51 +130,85 @@ export function jsonError(msg, status) {
   });
 }
 
-
-
 export async function processRequest(request, config) {
   const url = new URL(request.url);
-  const targetUrl = new URL(config.forwardPathname + url.search, config.targetUrl);
-  console.log(`forwardPathname: ${config.forwardPathname}, processRequest: url:${url}, targetUrl:${targetUrl}`)
   
+  // Build target URL with forward pathname and query string
+  const targetUrl = new URL(config.forwardPathname + url.search, config.targetUrl);
+  console.log(`processRequest: method:${request.method}, targetUrl:${targetUrl}`);
   
   const headers = new Headers(request.headers);
+  
+  // Remove Cloudflare-specific headers
   const headersToRemove = [
     'host', 'cf-connecting-ip', 'cf-ray', 'cf-visitor',
     'cf-ipcountry', 'cdn-loop', 'x-forwarded-proto'
   ];
-  
   headersToRemove.forEach(header => headers.delete(header));
   
-  // FIX: Use a different approach for body handling
+  // 🔥 FIX: Rewrite Destination header for WebDAV MOVE/COPY
+  if (['MOVE', 'COPY'].includes(request.method)) {
+    const destination = headers.get('Destination');
+    if (destination) {
+      try {
+        const destUrl = new URL(destination);
+        // Extract the path after the forward prefix
+        const destPath = destUrl.pathname;
+        
+        // Parse the destination path to extract forwardPathname
+        // Format: /_forward/KEY/JSONBIN_PATH/urlsplit/FORWARD_PATH
+        const urlsplitIndex = destPath.indexOf('/urlsplit/');
+        if (urlsplitIndex > -1) {
+          const destForwardPath = destPath.slice(urlsplitIndex + '/urlsplit/'.length);
+          const newDestination = new URL(destForwardPath, config.targetUrl).toString();
+          headers.set('Destination', newDestination);
+          console.log(`Rewritten Destination: ${destination} -> ${newDestination}`);
+        } else {
+          // Fallback: just replace the origin
+          const newDestination = new URL(destUrl.pathname, config.targetUrl).toString();
+          headers.set('Destination', newDestination);
+          console.log(`Rewritten Destination (fallback): ${destination} -> ${newDestination}`);
+        }
+      } catch (e) {
+        console.error('Failed to rewrite Destination header:', e);
+      }
+    }
+  }
+  
   const requestInit = {
     method: request.method,
     headers: headers,
   };
   
-  // For methods with body, pass it directly without consuming
-  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
-    // Don't consume the body here, let fetch handle it
+  // 🔥 FIX: Handle body for more methods (including WebDAV)
+  const methodsWithBody = [
+    'POST', 'PUT', 'PATCH', 'DELETE',
+    'PROPFIND', 'PROPPATCH', 'MKCOL', 'LOCK'
+  ];
+  
+  if (methodsWithBody.includes(request.method)) {
     const contentLength = request.headers.get('content-length');
     
     if (contentLength && parseInt(contentLength) > 0) {
-      // For small bodies, read and pass as ArrayBuffer
+      // For small bodies, read as ArrayBuffer
       if (parseInt(contentLength) < 10 * 1024 * 1024) { // < 10MB
         requestInit.body = await request.arrayBuffer();
       } else {
-        // For large bodies, use the stream directly
+        // For large bodies, use stream directly
         requestInit.body = request.body;
         requestInit.duplex = 'half';
       }
     } else {
-      // Try to read the body
+      // Try to read the body if no content-length
       try {
-        const bodyText = await request.text();
-        if (bodyText.length > 0) {
-          requestInit.body = bodyText;
+        const cloned = request.clone();
+        const bodyBuffer = await cloned.arrayBuffer();
+        if (bodyBuffer.byteLength > 0) {
+          requestInit.body = bodyBuffer;
         }
       } catch (e) {
         // No body or already consumed
+        console.log('No body to forward');
       }
     }
   }
