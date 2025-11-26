@@ -5,6 +5,8 @@ A simple json store based on cloudflare KV
 -  write
 - auto direct to url
 
+### Admin 
+![admin](assets/admin.png)
 
 ### write
 
@@ -77,23 +79,43 @@ npx wrangler pages dev ./dist -k JSONBIN=jsonbin --compatibility-date=2025-10-08
 ```bash
 
 # json
-curl "http://localhost:8788/test/data.json?key=yourapi&c=123" --data-binary @./data.json
-curl "http://localhost:8788/test/data.json?key=yourapi&c=123"
-curl "http://localhost:8788/test/data.json?key=yourapi&c=123&s=raw"
-curl "http://localhost:8788/test/data.json?key=yourapi&c=123&q=url"
-curl "http://localhost:8788/test/data.json?key=yourapi&c=123&r=1" -i
+## json wirte read
 
-curl "http://localhost:8788/test/data.json?key=yourapi" --data-binary @./data.json
-curl "http://localhost:8788/_forward/yourapi/test/data.json" -i
+#### upload file
+curl "http://localhost:8788/test/data1.json?key=yourapi" -d @./data.json
+### get file
+curl "http://localhost:8788/test/data1.json?key=yourapi"
+### get field
+curl "http://localhost:8788/test/data1.json?key=yourapi&q=url"
+curl "http://localhost:8788/test/data1.json?key=yourapi&q=name"
+### update field
+curl "http://localhost:8788/test/data1.json?key=yourapi&q=url" -d "http://www.bbc.com"
+curl "http://localhost:8788/test/data1.json?key=yourapi&r=1" -i
 
-curl "http://localhost:8788/openlist/config?key=yourapi&q=url" -d "https://ichef.bbci.co.uk"
-curl "http://localhost:8788/_forward/yourapi/openlist/config"
-curl "http://localhost:8788/_forward/yourapi/openlist/config/nn@@xxnews/1024/cpsprodpb/0aee/live/7be5d510-c94d-11f0-abcf-97df5562f205.jpg.webp" -o a.jpg.webp
 
-curl -sSL -o data.json "http://localhost:8788/test/data.json?key=yourapi&c=123&download"
+
+### password
+curl "http://localhost:8788/test/data2.json?key=yourapi&c=123" -d @./data.json
+curl "http://localhost:8788/test/data2.json?key=yourapi&c=123"
+curl "http://localhost:8788/test/data2.json?key=yourapi&c=123&q=name"
+
+curl "http://localhost:8788/test/data2.json?key=yourapi&c=123&q=url" -d "http://www.bing.com"
+curl "http://localhost:8788/test/data2.json?key=yourapi&c=123&r=1" -i
+
+
+## forward
+# https://upload.wikimedia.org/wikipedia/commons/5/57/Dogs_mating_2.jpg
+curl "http://localhost:8788/share?key=yourapi&q=url" -d "https://upload.wikimedia.org"
+curl "http://localhost:8788/_forward/yourapi/share/urlsplit/wikipedia/commons/thumb/6/6e/La_basilica_al_tramonto.jpg/2560px-La_basilica_al_tramonto.jpg" -o wiki.jpg
+curl "http://localhost:8788/_forward/yourapi/share/urlsplit/wikipedia/commons/5/57/Dogs_mating_2.jpg" -o wiki.jpg
 
 
 # binary
-curl "http://localhost:8788/test/code.webp?key=yourapi&c=123" --data-binary @./code.webp
-curl -sSL -o c.webp "http://localhost:8788/test/code.webp?key=yourapi&c=123&download"
+curl "http://localhost:8788/test/wiki.jpg?key=yourapi" --data-binary @./wiki.jpg
+curl -sSL -o wiki2.jpg "http://localhost:8788/test/wiki.jpg?key=yourapi&download"
+
+# openlist
+curl "http://localhost:8788/openlist/config?key=yourapi&q=url" -d "https://consistency-fireplace-jane-sufficient.trycloudflare.com"
+
+
 ```

@@ -293,3 +293,42 @@ export function isOriginAllowed(request, allowedOrigins) {
   
   return allowedOrigins.includes(origin);
 }
+
+
+/**
+ * Convert ArrayBuffer/Uint8Array to UTF-8 text
+ */
+export function bufferToText(value) {
+  if (value instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(value));
+  } else if (value instanceof Uint8Array) {
+    return new TextDecoder().decode(value);
+  }
+  return String(value);
+}
+
+/**
+ * Decrypt data and try to decode (handles base64 or plain JSON)
+ */
+export async function decryptAndDecode(ciphertext, key) {
+
+  var decrypted = "";
+  try{
+    decrypted = await decryptData(ciphertext, key);
+  }catch{
+    return JSON.stringify({ok:false, status:`wrong decrypt key: ${key}`});
+  }
+  // Try parsing as JSON first
+  try {
+    JSON.parse(decrypted);
+    return decrypted;
+  } catch {
+    // Try base64 decode
+    try {
+      const bytes = base64ToUint8Array(decrypted);
+      return new TextDecoder().decode(bytes);
+    } catch {
+      return decrypted;
+    }
+  }
+}
