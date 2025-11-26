@@ -68,13 +68,13 @@ export async function handleRequest(request, env) {
     let pathname = originPathname;
     let forwardPathname = "/";
 
-      
+
     // ============================================================
     // ADMIN PANEL
     // ============================================================
     if (originPathname === '/_admin' || originPathname === '/_admin/') {
       return new Response(getAdminHTML(env), {
-        headers: { 
+        headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache'
         }
@@ -366,14 +366,19 @@ async function handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect,
 
     let text = bufferToText(result.value);
     const meta = result.metadata || {};
-    
+
     // ✅ FIX: Check if encrypted and validate key is provided
-    if (meta.crypt) {
-      if (!crypt) {
-        return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+    try {
+      if (meta.crypt) {
+        if (!crypt) {
+          return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+        }
+        text = await decryptAndDecode(text, crypt);
       }
-      text = await decryptAndDecode(text, crypt);
+    } catch (error) {
+      return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
     }
+
 
     const json = JSON.parse(text);
     const disposition = `attachment; filename="${pathname.split("/").pop() || "data.json"}"`;
@@ -435,13 +440,20 @@ async function handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect,
   }
 
   // ✅ FIX: Check metadata for encryption
-  if (meta.crypt) {
-    if (!crypt) {
-      return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+  try {
+    if (meta.crypt) {
+      if (!crypt) {
+        return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+      }
+      const ciphertext = new TextDecoder().decode(value);
+      const decryptedBase64 = await decryptData(ciphertext, crypt);
+      value = base64ToUint8Array(decryptedBase64).buffer;
     }
-    const ciphertext = new TextDecoder().decode(value);
-    const decryptedBase64 = await decryptData(ciphertext, crypt);
-    value = base64ToUint8Array(decryptedBase64).buffer;
+
+  }
+  catch (error) {
+    return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
+
   }
 
   // Handle download token
@@ -479,15 +491,15 @@ async function handleStore(pathname, request, env, { sParam, q, crypt, encbase64
 
     // ✅ FIX: Cleaner structure - check existing data
     const result = await env.JSONBIN.getWithMetadata(pathname);
-    
+
     if (result?.value) {
       const meta = result.metadata || {};
-      
+
       // Check encryption compatibility
       if (meta.crypt && !crypt) {
         return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
       }
-      
+
       if (!meta.crypt && crypt) {
         console.log(`[STORE] Converting ${pathname} from unencrypted to encrypted`);
       }
@@ -501,7 +513,7 @@ async function handleStore(pathname, request, env, { sParam, q, crypt, encbase64
           return jsonError(`Failed to decrypt ${pathname}: Invalid key`, 403);
         }
       }
-      
+
       // Parse existing data
       try {
         existing = JSON.parse(val);
@@ -614,7 +626,7 @@ async function createDownloadToken(pathname, filetype, searchParams, env, crypt,
  */
 function getAdminHTML(env) {
   const apiUrl = '';
-  
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1271,7 +1283,12 @@ function getAdminHTML(env) {
                         this.showDecryptionForm(name, viewAs);
                         return;
                     }
-                    
+
+                    if (!response.ok && response.status === 401) {
+                        const response_text = JSON.stringify(await response.json());
+
+                        throw new Error(response_text);
+                    }
                     if (!response.ok) {
                         throw new Error('Failed to load item: ' + response.statusText);
                     }
@@ -1343,8 +1360,9 @@ function getAdminHTML(env) {
                     // Highlight selected item
                     document.querySelectorAll('.item').forEach(el => el.classList.remove('active'));
                     document.querySelectorAll('.item').forEach(el => {
-                      const eltext = el.textContent.trim();
-                      if(eltext.startsWith(name)){
+                      const content = el.textContent.trim();
+                      const eltext = content.split("\\n")[0];
+                      if(eltext == name){
                           el.classList.add('active');
                       }
                     

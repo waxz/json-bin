@@ -5,7 +5,10 @@ A simple json store based on cloudflare KV
 -  write
 - auto direct to url
 
-### Admin 
+### Admin
+```
+https://jsonbin.your-account.workers.dev/_admin
+```
 ![admin](assets/admin.png)
 
 ### write
@@ -50,18 +53,30 @@ Create a KV namespace
 #### for workers
 
 Build Command:
-    npm i
+
+```bash
+npm i
+```
+
 Deploy command:
 
-    npx wrangler deploy ./dist/_worker.js --compatibility-date 2025-08-31
+```bash
+npx wrangler deploy ./dist/_worker.js --compatibility-date 2025-08-31
+```
 
 #### for pages
+
 Build Command:
-    npm i
+
+```bash
+npm i
+```
+
 Build output directory:
 
-    dist
-
+```
+dist
+```
 
 - Environment variables (advanced) -> add Secret `APIKEYSECRET`
 - after deployment, add Bindings, KV

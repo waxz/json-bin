@@ -132,20 +132,20 @@ export function jsonError(msg, status) {
 
 export async function processRequest(request, config) {
   const url = new URL(request.url);
-  
+
   // Build target URL with forward pathname and query string
   const targetUrl = new URL(config.forwardPathname + url.search, config.targetUrl);
   console.log(`processRequest: method:${request.method}, targetUrl:${targetUrl}`);
-  
+
   const headers = new Headers(request.headers);
-  
+
   // Remove Cloudflare-specific headers
   const headersToRemove = [
     'host', 'cf-connecting-ip', 'cf-ray', 'cf-visitor',
     'cf-ipcountry', 'cdn-loop', 'x-forwarded-proto'
   ];
   headersToRemove.forEach(header => headers.delete(header));
-  
+
   // 🔥 FIX: Rewrite Destination header for WebDAV MOVE/COPY
   if (['MOVE', 'COPY'].includes(request.method)) {
     const destination = headers.get('Destination');
@@ -154,7 +154,7 @@ export async function processRequest(request, config) {
         const destUrl = new URL(destination);
         // Extract the path after the forward prefix
         const destPath = destUrl.pathname;
-        
+
         // Parse the destination path to extract forwardPathname
         // Format: /_forward/KEY/JSONBIN_PATH/urlsplit/FORWARD_PATH
         const urlsplitIndex = destPath.indexOf('/urlsplit/');
@@ -174,21 +174,21 @@ export async function processRequest(request, config) {
       }
     }
   }
-  
+
   const requestInit = {
     method: request.method,
     headers: headers,
   };
-  
+
   // 🔥 FIX: Handle body for more methods (including WebDAV)
   const methodsWithBody = [
     'POST', 'PUT', 'PATCH', 'DELETE',
     'PROPFIND', 'PROPPATCH', 'MKCOL', 'LOCK'
   ];
-  
+
   if (methodsWithBody.includes(request.method)) {
     const contentLength = request.headers.get('content-length');
-    
+
     if (contentLength && parseInt(contentLength) > 0) {
       // For small bodies, read as ArrayBuffer
       if (parseInt(contentLength) < 10 * 1024 * 1024) { // < 10MB
@@ -212,25 +212,25 @@ export async function processRequest(request, config) {
       }
     }
   }
-  
+
   return new Request(targetUrl.toString(), requestInit);
 }
 
 export async function forwardRequest(request, config) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-  
+
   try {
     const response = await fetch(request, {
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
     return new Response(response.body, response);
-    
+
   } catch (error) {
     clearTimeout(timeoutId);
-    
+
     if (error.name === 'AbortError') {
       throw new Error(`Request timeout after ${config.timeout}ms`);
     }
@@ -241,11 +241,11 @@ export async function forwardRequest(request, config) {
 export function addCORSHeaders(response, request, config) {
   const newHeaders = new Headers(response.headers);
   const corsHeaders = getCORSHeaders(request, config.allowedOrigins);
-  
+
   Object.entries(corsHeaders).forEach(([key, value]) => {
     newHeaders.set(key, value);
   });
-  
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -255,7 +255,7 @@ export function addCORSHeaders(response, request, config) {
 
 export function handleCORS(request, env) {
   const allowedOrigins = env.ALLOWED_ORIGINS?.split(',') || ['*'];
-  
+
   return new Response(null, {
     status: 204,
     headers: {
@@ -268,14 +268,14 @@ export function handleCORS(request, env) {
 export function getCORSHeaders(request, allowedOrigins) {
   const origin = request.headers.get('Origin');
   let allowOrigin = '*';
-  
+
   // If specific origins are allowed, check if request origin is in the list
   if (!allowedOrigins.includes('*') && origin) {
     allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
   } else if (origin) {
     allowOrigin = origin;
   }
-  
+
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
@@ -287,10 +287,10 @@ export function getCORSHeaders(request, allowedOrigins) {
 
 export function isOriginAllowed(request, allowedOrigins) {
   if (allowedOrigins.includes('*')) return true;
-  
+
   const origin = request.headers.get('Origin');
   if (!origin) return true;
-  
+
   return allowedOrigins.includes(origin);
 }
 
@@ -312,12 +312,8 @@ export function bufferToText(value) {
  */
 export async function decryptAndDecode(ciphertext, key) {
 
-  var decrypted = "";
-  try{
-    decrypted = await decryptData(ciphertext, key);
-  }catch{
-    return JSON.stringify({ok:false, status:`wrong decrypt key: ${key}`});
-  }
+  var decrypted = decrypted = await decryptData(ciphertext, key);;
+
   // Try parsing as JSON first
   try {
     JSON.parse(decrypted);
