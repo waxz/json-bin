@@ -121,8 +121,13 @@ curl "http://localhost:8788/test/data2.json?key=yourapi&c=123&r=1" -i
 ## forward
 # https://upload.wikimedia.org/wikipedia/commons/5/57/Dogs_mating_2.jpg
 curl "http://localhost:8788/share?key=yourapi&q=url" -d "https://upload.wikimedia.org"
-curl "http://localhost:8788/_forward/yourapi/share/urlsplit/wikipedia/commons/thumb/6/6e/La_basilica_al_tramonto.jpg/2560px-La_basilica_al_tramonto.jpg" -o wiki.jpg
+
 curl "http://localhost:8788/_forward/yourapi/share/urlsplit/wikipedia/commons/5/57/Dogs_mating_2.jpg" -o wiki.jpg
+
+
+curl "http://localhost:8788/share2?key=yourapi&q=url" -d "https://en.wikipedia.org/"
+
+curl "http://localhost:8788/_forward/yourapi/share2/urlsplit/wiki/Kangaroo_rat"
 
 
 # binary

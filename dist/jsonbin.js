@@ -1,24 +1,24 @@
 import {
-  encryptData,
-  decryptData,
-  arrayBufferToBase64,
-  base64ToUint8Array,
-  encryptBinary,
-  decryptBinary,
-  utf8ToBase64,
-  base64ToUtf8,
-  sanitizeFilename,
-  generateToken,
-  jsonOK,
-  jsonError,
-  handleCORS,
-  isOriginAllowed,
-  processRequest,
-  getCORSHeaders,
-  forwardRequest,
-  addCORSHeaders,
-  bufferToText,
-  decryptAndDecode
+    encryptData,
+    decryptData,
+    arrayBufferToBase64,
+    base64ToUint8Array,
+    encryptBinary,
+    decryptBinary,
+    utf8ToBase64,
+    base64ToUtf8,
+    sanitizeFilename,
+    generateToken,
+    jsonOK,
+    jsonError,
+    handleCORS,
+    isOriginAllowed,
+    processRequest,
+    getCORSHeaders,
+    forwardRequest,
+    addCORSHeaders,
+    bufferToText,
+    decryptAndDecode
 } from './helpers.js';
 
 /**
@@ -36,147 +36,147 @@ import {
  * @returns {Promise<Response>}
  */
 export async function handleRequest(request, env) {
-  // ============================================================
-  // INITIALIZATION & VALIDATION
-  // ============================================================
-
-  const JSONBIN = env.JSONBIN;
-  if (!JSONBIN) return jsonError("Missing env.JSONBIN", 500);
-
-  const APIKEY = env.APIKEYSECRET;
-  if (!APIKEY) return jsonError("Missing env.APIKEYSECRET", 500);
-
-  // Handle CORS preflight
-  if (request.method === 'OPTIONS') {
-    return handleCORS(request, env);
-  }
-
-  try {
     // ============================================================
-    // URL PARSING & PATH PROCESSING
+    // INITIALIZATION & VALIDATION
     // ============================================================
 
-    const urlObj = new URL(request.url);
-    const originPathname = urlObj.pathname;
-    const { searchParams } = urlObj;
+    const JSONBIN = env.JSONBIN;
+    if (!JSONBIN) return jsonError("Missing env.JSONBIN", 500);
 
-    // Check if this is a forward/proxy request
-    const forwardPath = `/_forward/${APIKEY}`;
-    const urlSplitMarker = env.URLSPLIT || "/urlsplit";
-    const isForward = originPathname.startsWith(forwardPath);
+    const APIKEY = env.APIKEYSECRET;
+    if (!APIKEY) return jsonError("Missing env.APIKEYSECRET", 500);
 
-    let pathname = originPathname;
-    let forwardPathname = "/";
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+        return handleCORS(request, env);
+    }
+
+    try {
+        // ============================================================
+        // URL PARSING & PATH PROCESSING
+        // ============================================================
+
+        const urlObj = new URL(request.url);
+        const originPathname = urlObj.pathname;
+        const { searchParams } = urlObj;
+
+        // Check if this is a forward/proxy request
+        const forwardPath = `/_forward/${APIKEY}`;
+        const urlSplitMarker = env.URLSPLIT || "/urlsplit";
+        const isForward = originPathname.startsWith(forwardPath);
+
+        let pathname = originPathname;
+        let forwardPathname = "/";
 
 
-    // ============================================================
-    // ADMIN PANEL
-    // ============================================================
-    if (originPathname === '/_admin' || originPathname === '/_admin/') {
-      return new Response(getAdminHTML(env), {
-        headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache'
+        // ============================================================
+        // ADMIN PANEL
+        // ============================================================
+        if (originPathname === '/_admin' || originPathname === '/_admin/') {
+            return new Response(getAdminHTML(env), {
+                headers: {
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'Cache-Control': 'no-cache'
+                }
+            });
         }
-      });
+
+        // Parse forward request format: /_forward/KEY/JSONBIN_PATH/urlsplit/TARGET_PATH
+        if (isForward) {
+            pathname = originPathname.slice(forwardPath.length);
+
+            if (pathname.includes(urlSplitMarker)) {
+                const [jsonbinPath, targetPath] = pathname.split(urlSplitMarker);
+                pathname = jsonbinPath;
+                forwardPathname = targetPath || "/";
+            }
+        }
+
+        // Normalize pathname (remove trailing slash except for root)
+        if (pathname.endsWith("/") && pathname.length > 1) {
+            pathname = pathname.slice(0, -1);
+        }
+
+        // Extract common parameters
+        const headers = request.headers;
+        const crypt = searchParams.get("c");           // Encryption key
+        const q = searchParams.get("q");               // Query field
+        const sParam = searchParams.get("s");          // Storage type hint
+
+        console.log(`[REQUEST] ${request.method} ${pathname}${isForward ? ` -> ${forwardPathname}` : ''}`);
+
+        // ============================================================
+        // PUBLIC TOKEN DOWNLOAD
+        // ============================================================
+        // Path: /_download/<token>/<filename>
+
+        if (pathname.startsWith("/_download/")) {
+            return await handleTokenDownload(pathname, env, crypt);
+        }
+
+        // ============================================================
+        // FORWARD/PROXY HANDLER
+        // ============================================================
+        // Forwards requests to remote servers (supports WebDAV, REST APIs, etc.)
+
+        if (isForward) {
+            return await handleForward(pathname, forwardPathname, request, env, { crypt, q });
+        }
+
+        // ============================================================
+        // AUTHENTICATION
+        // ============================================================
+        // Required for all non-public, non-forward operations
+
+        const authHeader = headers.get("Authorization");
+        const keyFromQuery = searchParams.get("key");
+        const expectedHeader = `Bearer ${APIKEY}`;
+
+        if (authHeader && authHeader !== expectedHeader) {
+            return jsonError("Invalid Authorization header", 401);
+        } else if (keyFromQuery && keyFromQuery !== APIKEY) {
+            return jsonError("Invalid key query", 401);
+        } else if (!authHeader && !keyFromQuery) {
+            return jsonError("Missing Authorization or key", 401);
+        }
+
+        // ============================================================
+        // OPERATION ROUTING
+        // ============================================================
+
+        const listFlag = searchParams.has("list");
+        const encbase64 = searchParams.has("b64");
+        const redirect = searchParams.has("redirect") || searchParams.has("r");
+        const isJson = pathname.endsWith(".json");
+
+        // LIST: Show all stored items
+        if (listFlag) {
+            return await handleList(env);
+        }
+
+        // GET: Retrieve data
+        if (request.method === "GET") {
+            return await handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect, isJson, searchParams });
+        }
+
+        // POST/PATCH: Store or update data
+        if (request.method === "POST" || request.method === "PATCH") {
+            return await handleStore(pathname, request, env, { sParam, q, crypt, encbase64, isJson });
+        }
+
+        // DELETE: Remove data
+        if (request.method === "DELETE") {
+            await env.JSONBIN.delete(pathname);
+            console.log(`[DELETE] Deleted: ${pathname}`);
+            return jsonOK({ deleted: true });
+        }
+
+        return jsonError("Method Not Allowed", 405);
+
+    } catch (err) {
+        console.error('[ERROR]', err.message, err.stack);
+        return jsonError(err.message || String(err), 500);
     }
-
-    // Parse forward request format: /_forward/KEY/JSONBIN_PATH/urlsplit/TARGET_PATH
-    if (isForward) {
-      pathname = originPathname.slice(forwardPath.length);
-
-      if (pathname.includes(urlSplitMarker)) {
-        const [jsonbinPath, targetPath] = pathname.split(urlSplitMarker);
-        pathname = jsonbinPath;
-        forwardPathname = targetPath || "/";
-      }
-    }
-
-    // Normalize pathname (remove trailing slash except for root)
-    if (pathname.endsWith("/") && pathname.length > 1) {
-      pathname = pathname.slice(0, -1);
-    }
-
-    // Extract common parameters
-    const headers = request.headers;
-    const crypt = searchParams.get("c");           // Encryption key
-    const q = searchParams.get("q");               // Query field
-    const sParam = searchParams.get("s");          // Storage type hint
-
-    console.log(`[REQUEST] ${request.method} ${pathname}${isForward ? ` -> ${forwardPathname}` : ''}`);
-
-    // ============================================================
-    // PUBLIC TOKEN DOWNLOAD
-    // ============================================================
-    // Path: /_download/<token>/<filename>
-
-    if (pathname.startsWith("/_download/")) {
-      return await handleTokenDownload(pathname, env, crypt);
-    }
-
-    // ============================================================
-    // FORWARD/PROXY HANDLER
-    // ============================================================
-    // Forwards requests to remote servers (supports WebDAV, REST APIs, etc.)
-
-    if (isForward) {
-      return await handleForward(pathname, forwardPathname, request, env, { crypt, q });
-    }
-
-    // ============================================================
-    // AUTHENTICATION
-    // ============================================================
-    // Required for all non-public, non-forward operations
-
-    const authHeader = headers.get("Authorization");
-    const keyFromQuery = searchParams.get("key");
-    const expectedHeader = `Bearer ${APIKEY}`;
-
-    if (authHeader && authHeader !== expectedHeader) {
-      return jsonError("Invalid Authorization header", 401);
-    } else if (keyFromQuery && keyFromQuery !== APIKEY) {
-      return jsonError("Invalid key query", 401);
-    } else if (!authHeader && !keyFromQuery) {
-      return jsonError("Missing Authorization or key", 401);
-    }
-
-    // ============================================================
-    // OPERATION ROUTING
-    // ============================================================
-
-    const listFlag = searchParams.has("list");
-    const encbase64 = searchParams.has("b64");
-    const redirect = searchParams.has("redirect") || searchParams.has("r");
-    const isJson = pathname.endsWith(".json");
-
-    // LIST: Show all stored items
-    if (listFlag) {
-      return await handleList(env);
-    }
-
-    // GET: Retrieve data
-    if (request.method === "GET") {
-      return await handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect, isJson, searchParams });
-    }
-
-    // POST/PATCH: Store or update data
-    if (request.method === "POST" || request.method === "PATCH") {
-      return await handleStore(pathname, request, env, { sParam, q, crypt, encbase64, isJson });
-    }
-
-    // DELETE: Remove data
-    if (request.method === "DELETE") {
-      await env.JSONBIN.delete(pathname);
-      console.log(`[DELETE] Deleted: ${pathname}`);
-      return jsonOK({ deleted: true });
-    }
-
-    return jsonError("Method Not Allowed", 405);
-
-  } catch (err) {
-    console.error('[ERROR]', err.message, err.stack);
-    return jsonError(err.message || String(err), 500);
-  }
 }
 
 // ============================================================
@@ -187,404 +187,418 @@ export async function handleRequest(request, env) {
  * Handle public download via expiring token
  */
 async function handleTokenDownload(pathname, env, crypt) {
-  const parts = pathname.split("/").filter(Boolean);
-  const token = parts[1];
+    const parts = pathname.split("/").filter(Boolean);
+    const token = parts[1];
 
-  if (!token) return jsonError("Token missing", 400);
+    if (!token) return jsonError("Token missing", 400);
 
-  const tokenPath = `/__token/${token}`;
-  const tokenEntry = await env.JSONBIN.get(tokenPath);
+    const tokenPath = `/__token/${token}`;
+    const tokenEntry = await env.JSONBIN.get(tokenPath);
 
-  if (!tokenEntry) return jsonError("Token not found or expired", 404);
+    if (!tokenEntry) return jsonError("Token not found or expired", 404);
 
-  let tokenObj;
-  try {
-    tokenObj = JSON.parse(tokenEntry);
-  } catch (e) {
-    return jsonError("Invalid token record", 500);
-  }
-
-  // Check expiration
-  if (Date.now() > tokenObj.expires) {
-    await env.JSONBIN.delete(tokenPath).catch(() => { });
-    return jsonError("Token expired", 404);
-  }
-
-  // Fetch target file
-  const result = await env.JSONBIN.getWithMetadata(tokenObj.target, "arrayBuffer");
-  if (!result?.value) return jsonError(`${tokenObj.target} Not Found`, 404);
-
-  let value = result.value;
-  const meta = result.metadata || {};
-  const filetype = tokenObj.filetype || meta.filetype || "application/octet-stream";
-  const filename = tokenObj.filename || meta.filename || tokenObj.target.split("/").pop() || "file";
-
-  // Decrypt if needed
-  if (tokenObj.crypt) {
-    const ciphertext = new TextDecoder().decode(value);
-    const decryptedBase64 = await decryptData(ciphertext, tokenObj.crypt);
-    value = base64ToUint8Array(decryptedBase64).buffer;
-  }
-
-  console.log(`[DOWNLOAD] Token: ${token}, File: ${filename}`);
-
-  return new Response(value, {
-    headers: {
-      "Content-Type": filetype,
-      "Content-Disposition": `attachment; filename="${sanitizeFilename(filename)}"; filename*=UTF-8''${encodeURIComponent(sanitizeFilename(filename))}`,
-      "Content-Length": String(value.byteLength || 0),
-      "Cache-Control": "no-store",
+    let tokenObj;
+    try {
+        tokenObj = JSON.parse(tokenEntry);
+    } catch (e) {
+        return jsonError("Invalid token record", 500);
     }
-  });
+
+    // Check expiration
+    if (Date.now() > tokenObj.expires) {
+        await env.JSONBIN.delete(tokenPath).catch(() => { });
+        return jsonError("Token expired", 404);
+    }
+
+    // Fetch target file
+    const result = await env.JSONBIN.getWithMetadata(tokenObj.target, "arrayBuffer");
+    if (!result?.value) return jsonError(`${tokenObj.target} Not Found`, 404);
+
+    let value = result.value;
+    const meta = result.metadata || {};
+    const filetype = tokenObj.filetype || meta.filetype || "application/octet-stream";
+    const filename = tokenObj.filename || meta.filename || tokenObj.target.split("/").pop() || "file";
+
+    // Decrypt if needed
+    if (tokenObj.crypt) {
+        const ciphertext = new TextDecoder().decode(value);
+        const decryptedBase64 = await decryptData(ciphertext, tokenObj.crypt);
+        value = base64ToUint8Array(decryptedBase64).buffer;
+    }
+
+    console.log(`[DOWNLOAD] Token: ${token}, File: ${filename}`);
+
+    return new Response(value, {
+        headers: {
+            "Content-Type": filetype,
+            "Content-Disposition": `attachment; filename="${sanitizeFilename(filename)}"; filename*=UTF-8''${encodeURIComponent(sanitizeFilename(filename))}`,
+            "Content-Length": String(value.byteLength || 0),
+            "Cache-Control": "no-store",
+        }
+    });
 }
 
 /**
  * Handle request forwarding/proxying
  */
 async function handleForward(pathname, forwardPathname, request, env, { crypt, q }) {
-  console.log(`[FORWARD] Config: ${pathname}, Target: ${forwardPathname}`);
+    console.log(`[FORWARD] Config: ${pathname}, Target: ${forwardPathname}`);
 
-  // Fetch forwarding configuration from JSONBIN
-  const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
-  if (!result?.value) {
-    return jsonError(`Forward config not found: ${pathname}`, 404);
-  }
-
-  // Convert to text
-  let text = bufferToText(result.value);
-
-  // Decrypt if needed
-  if (crypt) {
-    text = await decryptAndDecode(text, crypt);
-  }
-
-  // Parse JSON config
-  let config;
-  try {
-    config = JSON.parse(text);
-  } catch (e) {
-    return jsonError(`Invalid JSON in forward config: ${e.message}`, 500);
-  }
-
-  // Extract target URL from config
-  let targetUrl = "";
-  if (q && config.hasOwnProperty(q)) {
-    targetUrl = config[q];
-  } else if (config.url) {
-    targetUrl = config.url;
-  } else {
-    return jsonError(`No target URL found in ${pathname}`, 404);
-  }
-
-  console.log(`[FORWARD] Proxying to: ${targetUrl}${forwardPathname}`);
-
-  // Forward the request
-  try {
-    const forwardConfig = {
-      targetUrl: targetUrl,
-      forwardPathname: forwardPathname,
-      allowedOrigins: env.ALLOWED_ORIGINS?.split(',') || ['*'],
-      timeout: parseInt(env.TIMEOUT || '30000'),
-      logRequests: env.LOG_REQUESTS === 'true',
-    };
-
-    // Check origin
-    if (!isOriginAllowed(request, forwardConfig.allowedOrigins)) {
-      return new Response('Origin not allowed', { status: 403 });
+    // Fetch forwarding configuration from JSONBIN
+    const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
+    if (!result?.value) {
+        return jsonError(`Forward config not found: ${pathname}`, 404);
     }
 
-    // Process and forward
-    const processedRequest = await processRequest(request, forwardConfig);
-    const response = await forwardRequest(processedRequest, forwardConfig);
+    // Convert to text
+    let text = bufferToText(result.value);
 
-    return addCORSHeaders(response, request, forwardConfig);
+    // Decrypt if needed
+    if (crypt) {
+        text = await decryptAndDecode(text, crypt);
+    }
 
-  } catch (error) {
-    console.error('[FORWARD ERROR]', error.message);
-    return new Response(
-      JSON.stringify({
-        error: 'Proxy Error',
-        message: error.message,
-        timestamp: new Date().toISOString()
-      }),
-      {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          ...getCORSHeaders(request, ['*'])
+    // Parse JSON config
+    let config;
+    try {
+        config = JSON.parse(text);
+    } catch (e) {
+        return jsonError(`Invalid JSON in forward config: ${e.message}`, 500);
+    }
+
+    // Extract target URL from config
+    let targetUrl = "";
+    if (q && config.hasOwnProperty(q)) {
+        targetUrl = config[q];
+    } else if (config.url) {
+        targetUrl = config.url;
+    } else {
+        return jsonError(`No target URL found in ${pathname}`, 404);
+    }
+
+    console.log(`[FORWARD] Proxying to: ${targetUrl}${forwardPathname}`);
+
+    // Forward the request
+    try {
+        const forwardConfig = {
+            targetUrl: targetUrl,
+            forwardPathname: forwardPathname,
+            allowedOrigins: env.ALLOWED_ORIGINS?.split(',') || ['*'],
+            timeout: parseInt(env.TIMEOUT || '30000'),
+            logRequests: env.LOG_REQUESTS === 'true',
+        };
+
+        // Check origin
+        if (!isOriginAllowed(request, forwardConfig.allowedOrigins)) {
+            return new Response('Origin not allowed', { status: 403 });
         }
-      }
-    );
-  }
+
+        // Process and forward
+        const processedRequest = await processRequest(request, forwardConfig);
+        const response = await forwardRequest(processedRequest, forwardConfig);
+
+        // TODO: Rewrite html to redirect to targetUrl
+        const content_type = response.headers.has("content-type") ? response.headers.get("content-type") : null;
+
+        if (content_type && content_type.includes("text/html")) {
+            const remote_url = `${targetUrl}${forwardPathname}`
+            console.log("forwardRequest: REDIRECT to --> ", remote_url);
+
+            return new Response(null, {
+                status: 302,
+                headers: { "Location": remote_url, "Cache-Control": "no-store" }
+            });
+
+        }
+
+        return addCORSHeaders(response, request, forwardConfig);
+
+    } catch (error) {
+        console.error('[FORWARD ERROR]', error.message);
+        return new Response(
+            JSON.stringify({
+                error: 'Proxy Error',
+                message: error.message,
+                timestamp: new Date().toISOString()
+            }),
+            {
+                status: 500,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getCORSHeaders(request, ['*'])
+                }
+            }
+        );
+    }
 }
 
 /**
  * Handle LIST operation - show all stored items with metadata
  */
 async function handleList(env) {
-  const list = await env.JSONBIN.list();
-  const items = [];
+    const list = await env.JSONBIN.list();
+    const items = [];
 
-  for (const key of list.keys) {
-    const meta = key.metadata || {};
-    items.push({
-      name: key.name,
-      size: meta.size || "?",
-      filetype: meta.filetype || "json/raw",
-      filename: meta.filename || "-",
-      encrypted: meta.crypt ? "yes" : "no"  // ✅ ADD THIS
+    for (const key of list.keys) {
+        const meta = key.metadata || {};
+        items.push({
+            name: key.name,
+            size: meta.size || "?",
+            filetype: meta.filetype || "json/raw",
+            filename: meta.filename || "-",
+            encrypted: meta.crypt ? "yes" : "no"  // ✅ ADD THIS
+        });
+    }
+
+    // Format as text table
+    const header = `${"name".padEnd(20)}  ${"filename".padEnd(20)}  ${"filetype".padEnd(20)}  ${"encrypted".padEnd(10)}\n${"-".repeat(80)}\n`;
+    const rows = items
+        .map(r => `${r.name.padEnd(20)}  ${r.filename.padEnd(20)}  ${r.filetype.padEnd(25)}  ${r.encrypted.padEnd(10)}  ${r.size}`)
+        .join("\n");
+
+    return new Response(header + rows + "\n", {
+        headers: { "Content-Type": "text/plain" }
     });
-  }
-
-  // Format as text table
-  const header = `${"name".padEnd(20)}  ${"filename".padEnd(20)}  ${"filetype".padEnd(20)}  ${"encrypted".padEnd(10)}\n${"-".repeat(80)}\n`;
-  const rows = items
-    .map(r => `${r.name.padEnd(20)}  ${r.filename.padEnd(20)}  ${r.filetype.padEnd(25)}  ${r.encrypted.padEnd(10)}  ${r.size}`)
-    .join("\n");
-
-  return new Response(header + rows + "\n", {
-    headers: { "Content-Type": "text/plain" }
-  });
 }
 
 /**
  * Handle GET operation - retrieve data
  */
 async function handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect, isJson, searchParams }) {
-  // Determine storage type
-  let storeHint = sParam || "raw";
-  if (q || isJson || redirect) storeHint = "json";
-  const isRaw = storeHint === "raw";
-  const wantDownload = searchParams.has("download") || searchParams.has("dl");
+    // Determine storage type
+    let storeHint = sParam || "raw";
+    if (q || isJson || redirect) storeHint = "json";
+    const isRaw = storeHint === "raw";
+    const wantDownload = searchParams.has("download") || searchParams.has("dl");
 
-  console.log(`[GET] ${pathname} (type: ${storeHint}, download: ${wantDownload})`);
+    console.log(`[GET] ${pathname} (type: ${storeHint}, download: ${wantDownload})`);
 
-  // Try JSON first (unless explicitly raw)
-  if (!isRaw) {
+    // Try JSON first (unless explicitly raw)
+    if (!isRaw) {
+        const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
+        if (!result?.value) return jsonError(`${pathname} Not Found`, 404);
+
+        let text = bufferToText(result.value);
+        const meta = result.metadata || {};
+
+        // ✅ FIX: Check if encrypted and validate key is provided
+        try {
+            if (meta.crypt) {
+                if (!crypt) {
+                    return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+                }
+                text = await decryptAndDecode(text, crypt);
+            }
+        } catch (error) {
+            return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
+        }
+
+
+        const json = JSON.parse(text);
+        const disposition = `attachment; filename="${pathname.split("/").pop() || "data.json"}"`;
+
+        // Handle download token
+        if (wantDownload) {
+            return createDownloadToken(pathname, "application/json", searchParams, env, crypt);
+        }
+
+        // Handle redirect
+        if (redirect) {
+            const url = (q && json[q]) || json.url;
+            if (!url) return jsonError(`Redirect URL not found`, 404);
+
+            console.log(`[REDIRECT] ${pathname} -> ${url}`);
+            return new Response(null, {
+                status: 302,
+                headers: { "Location": url, "Cache-Control": "no-store" }
+            });
+        }
+
+        // Return specific field or entire JSON
+        if (q) {
+            if (!json.hasOwnProperty(q)) return jsonError(`Field '${q}' not found`, 404);
+
+            let fieldText = String(json[q]);
+            if (encbase64) fieldText = base64ToUtf8(fieldText);
+
+            return new Response(fieldText, {
+                headers: {
+                    "Content-Type": "text/plain",
+                    "Content-Disposition": disposition
+                }
+            });
+        }
+
+        return new Response(text, {
+            headers: {
+                "Content-Type": "application/json",
+                "Content-Disposition": disposition
+            }
+        });
+    }
+
+    // Handle raw binary data
     const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
     if (!result?.value) return jsonError(`${pathname} Not Found`, 404);
 
-    let text = bufferToText(result.value);
+    let value = result.value;
     const meta = result.metadata || {};
+    const filetype = meta.filetype || "application/octet-stream";
+    let filename = searchParams.get("filename") || meta.filename || pathname.split("/").pop() || "file";
+    filename = sanitizeFilename(filename);
 
-    // ✅ FIX: Check if encrypted and validate key is provided
-    try {
-      if (meta.crypt) {
-        if (!crypt) {
-          return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
-        }
-        text = await decryptAndDecode(text, crypt);
-      }
-    } catch (error) {
-      return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
+    // Add extension if missing
+    if (!filename.includes(".")) {
+        const ext = filetype.split("/")[1] || "bin";
+        filename = `${filename}.${ext}`;
     }
 
+    // ✅ FIX: Check metadata for encryption
+    try {
+        if (meta.crypt) {
+            if (!crypt) {
+                return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+            }
+            const ciphertext = new TextDecoder().decode(value);
+            const decryptedBase64 = await decryptData(ciphertext, crypt);
+            value = base64ToUint8Array(decryptedBase64).buffer;
+        }
 
-    const json = JSON.parse(text);
-    const disposition = `attachment; filename="${pathname.split("/").pop() || "data.json"}"`;
+    }
+    catch (error) {
+        return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
+
+    }
 
     // Handle download token
     if (wantDownload) {
-      return createDownloadToken(pathname, "application/json", searchParams, env, crypt);
+        return createDownloadToken(pathname, filetype, searchParams, env, crypt, filename);
     }
 
-    // Handle redirect
-    if (redirect) {
-      const url = (q && json[q]) || json.url;
-      if (!url) return jsonError(`Redirect URL not found`, 404);
-
-      console.log(`[REDIRECT] ${pathname} -> ${url}`);
-      return new Response(null, {
-        status: 302,
-        headers: { "Location": url, "Cache-Control": "no-store" }
-      });
-    }
-
-    // Return specific field or entire JSON
-    if (q) {
-      if (!json.hasOwnProperty(q)) return jsonError(`Field '${q}' not found`, 404);
-
-      let fieldText = String(json[q]);
-      if (encbase64) fieldText = base64ToUtf8(fieldText);
-
-      return new Response(fieldText, {
+    return new Response(value, {
         headers: {
-          "Content-Type": "text/plain",
-          "Content-Disposition": disposition
+            "Content-Type": filetype,
+            "Content-Disposition": `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+            "Content-Length": String(value.byteLength || 0),
+            "Cache-Control": "no-store"
         }
-      });
-    }
-
-    return new Response(text, {
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Disposition": disposition
-      }
     });
-  }
-
-  // Handle raw binary data
-  const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
-  if (!result?.value) return jsonError(`${pathname} Not Found`, 404);
-
-  let value = result.value;
-  const meta = result.metadata || {};
-  const filetype = meta.filetype || "application/octet-stream";
-  let filename = searchParams.get("filename") || meta.filename || pathname.split("/").pop() || "file";
-  filename = sanitizeFilename(filename);
-
-  // Add extension if missing
-  if (!filename.includes(".")) {
-    const ext = filetype.split("/")[1] || "bin";
-    filename = `${filename}.${ext}`;
-  }
-
-  // ✅ FIX: Check metadata for encryption
-  try {
-    if (meta.crypt) {
-      if (!crypt) {
-        return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
-      }
-      const ciphertext = new TextDecoder().decode(value);
-      const decryptedBase64 = await decryptData(ciphertext, crypt);
-      value = base64ToUint8Array(decryptedBase64).buffer;
-    }
-
-  }
-  catch (error) {
-    return jsonError(`${pathname} is encrypted, provide key with ?c=KEY. The ${crypt} is wrong`, 401);
-
-  }
-
-  // Handle download token
-  if (wantDownload) {
-    return createDownloadToken(pathname, filetype, searchParams, env, crypt, filename);
-  }
-
-  return new Response(value, {
-    headers: {
-      "Content-Type": filetype,
-      "Content-Disposition": `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      "Content-Length": String(value.byteLength || 0),
-      "Cache-Control": "no-store"
-    }
-  });
 }
 
 /**
  * Handle POST/PATCH operation - store or update data
  */
 async function handleStore(pathname, request, env, { sParam, q, crypt, encbase64, isJson }) {
-  const contentType = request.headers.get("content-type") || "";
+    const contentType = request.headers.get("content-type") || "";
 
-  // Determine storage type
-  let storetype = sParam;
-  if (!storetype) {
-    storetype = (q || isJson || contentType.includes("json")) ? "json" : "raw";
-  }
+    // Determine storage type
+    let storetype = sParam;
+    if (!storetype) {
+        storetype = (q || isJson || contentType.includes("json")) ? "json" : "raw";
+    }
 
-  console.log(`[STORE] ${pathname} (type: ${storetype}, encrypted: ${!!crypt})`);
+    console.log(`[STORE] ${pathname} (type: ${storetype}, encrypted: ${!!crypt})`);
 
-  // Store as JSON
-  if (storetype === "json") {
-    let existing = {};
+    // Store as JSON
+    if (storetype === "json") {
+        let existing = {};
 
-    // ✅ FIX: Cleaner structure - check existing data
-    const result = await env.JSONBIN.getWithMetadata(pathname);
+        // ✅ FIX: Cleaner structure - check existing data
+        const result = await env.JSONBIN.getWithMetadata(pathname);
 
-    if (result?.value) {
-      const meta = result.metadata || {};
+        if (result?.value) {
+            const meta = result.metadata || {};
 
-      // Check encryption compatibility
-      if (meta.crypt && !crypt) {
-        return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
-      }
+            // Check encryption compatibility
+            if (meta.crypt && !crypt) {
+                return jsonError(`${pathname} is encrypted, provide key with ?c=KEY`, 403);
+            }
 
-      if (!meta.crypt && crypt) {
-        console.log(`[STORE] Converting ${pathname} from unencrypted to encrypted`);
-      }
+            if (!meta.crypt && crypt) {
+                console.log(`[STORE] Converting ${pathname} from unencrypted to encrypted`);
+            }
 
-      // Decrypt existing data if needed
-      let val = result.value;
-      if (meta.crypt) {
-        try {
-          val = await decryptData(val, crypt);
-        } catch (e) {
-          return jsonError(`Failed to decrypt ${pathname}: Invalid key`, 403);
+            // Decrypt existing data if needed
+            let val = result.value;
+            if (meta.crypt) {
+                try {
+                    val = await decryptData(val, crypt);
+                } catch (e) {
+                    return jsonError(`Failed to decrypt ${pathname}: Invalid key`, 403);
+                }
+            }
+
+            // Parse existing data
+            try {
+                existing = JSON.parse(val);
+            } catch (e) {
+                console.warn(`[STORE] Failed to parse existing data for ${pathname}, replacing`);
+            }
         }
-      }
 
-      // Parse existing data
-      try {
-        existing = JSON.parse(val);
-      } catch (e) {
-        console.warn(`[STORE] Failed to parse existing data for ${pathname}, replacing`);
-      }
+        // Process new data
+        let bodyText = await request.text();
+        if (encbase64) bodyText = utf8ToBase64(bodyText);
+
+        if (q) {
+            // Update specific field
+            existing[q] = bodyText;
+        } else {
+            // Replace entire object
+            try {
+                existing = JSON.parse(bodyText);
+            } catch (e) {
+                return jsonError("Invalid JSON: " + e.message, 400);
+            }
+        }
+
+        // Encrypt and store
+        let dataToStore = JSON.stringify(existing);
+        if (crypt) {
+            dataToStore = await encryptData(dataToStore, crypt);
+        }
+
+        await env.JSONBIN.put(pathname, dataToStore, {
+            metadata: { crypt: !!crypt }
+        });
+
+        console.log(`[STORED] ${pathname} (JSON, ${dataToStore.length} bytes, encrypted: ${!!crypt})`);
+        return jsonOK({ ok: true, type: "json", encrypted: !!crypt });
     }
 
-    // Process new data
-    let bodyText = await request.text();
-    if (encbase64) bodyText = utf8ToBase64(bodyText);
+    // Store as raw binary
+    if (storetype === "raw") {
+        const buffer = await request.arrayBuffer();
+        const segments = pathname.split("/");
+        let filename = segments.pop() || "file";
 
-    if (q) {
-      // Update specific field
-      existing[q] = bodyText;
-    } else {
-      // Replace entire object
-      try {
-        existing = JSON.parse(bodyText);
-      } catch (e) {
-        return jsonError("Invalid JSON: " + e.message, 400);
-      }
+        // Add extension if missing
+        if (!filename.includes(".")) {
+            const ext = contentType.split("/")[1] || "bin";
+            filename = `${filename}.${ext}`;
+        }
+
+        // Encrypt if requested
+        let toStore = buffer;
+        if (crypt) {
+            const encrypted = await encryptBinary(buffer, crypt);
+            toStore = new TextEncoder().encode(encrypted).buffer;
+        }
+
+        await env.JSONBIN.put(pathname, toStore, {
+            metadata: {
+                filetype: contentType || "application/octet-stream",
+                filename,
+                size: toStore.byteLength,
+                crypt: !!crypt  // ✅ ADD: Track encryption for raw files too
+            }
+        });
+
+        console.log(`[STORED] ${pathname} (raw, ${toStore.byteLength} bytes, encrypted: ${!!crypt})`);
+        return jsonOK({ stored: filename, type: "raw", size: toStore.byteLength, encrypted: !!crypt });
     }
 
-    // Encrypt and store
-    let dataToStore = JSON.stringify(existing);
-    if (crypt) {
-      dataToStore = await encryptData(dataToStore, crypt);
-    }
-
-    await env.JSONBIN.put(pathname, dataToStore, {
-      metadata: { crypt: !!crypt }
-    });
-
-    console.log(`[STORED] ${pathname} (JSON, ${dataToStore.length} bytes, encrypted: ${!!crypt})`);
-    return jsonOK({ ok: true, type: "json", encrypted: !!crypt });
-  }
-
-  // Store as raw binary
-  if (storetype === "raw") {
-    const buffer = await request.arrayBuffer();
-    const segments = pathname.split("/");
-    let filename = segments.pop() || "file";
-
-    // Add extension if missing
-    if (!filename.includes(".")) {
-      const ext = contentType.split("/")[1] || "bin";
-      filename = `${filename}.${ext}`;
-    }
-
-    // Encrypt if requested
-    let toStore = buffer;
-    if (crypt) {
-      const encrypted = await encryptBinary(buffer, crypt);
-      toStore = new TextEncoder().encode(encrypted).buffer;
-    }
-
-    await env.JSONBIN.put(pathname, toStore, {
-      metadata: {
-        filetype: contentType || "application/octet-stream",
-        filename,
-        size: toStore.byteLength,
-        crypt: !!crypt  // ✅ ADD: Track encryption for raw files too
-      }
-    });
-
-    console.log(`[STORED] ${pathname} (raw, ${toStore.byteLength} bytes, encrypted: ${!!crypt})`);
-    return jsonOK({ stored: filename, type: "raw", size: toStore.byteLength, encrypted: !!crypt });
-  }
-
-  return jsonError("Unsupported store type", 400);
+    return jsonError("Unsupported store type", 400);
 }
 
 // ============================================================
@@ -595,29 +609,29 @@ async function handleStore(pathname, request, env, { sParam, q, crypt, encbase64
  * Create expiring download token and redirect
  */
 async function createDownloadToken(pathname, filetype, searchParams, env, crypt, filename = null) {
-  const filenameForToken = sanitizeFilename(filename || pathname.split("/").pop() || "data");
-  const token = generateToken();
-  const expiresSec = parseInt(searchParams.get("expires") || "60", 10) || 60;
+    const filenameForToken = sanitizeFilename(filename || pathname.split("/").pop() || "data");
+    const token = generateToken();
+    const expiresSec = parseInt(searchParams.get("expires") || "60", 10) || 60;
 
-  const tokenObj = {
-    target: pathname,
-    expires: Date.now() + expiresSec * 1000,
-    filename: filenameForToken,
-    filetype,
-    crypt
-  };
+    const tokenObj = {
+        target: pathname,
+        expires: Date.now() + expiresSec * 1000,
+        filename: filenameForToken,
+        filetype,
+        crypt
+    };
 
-  await env.JSONBIN.put(`/__token/${token}`, JSON.stringify(tokenObj));
+    await env.JSONBIN.put(`/__token/${token}`, JSON.stringify(tokenObj));
 
-  console.log(`[TOKEN] Created: ${token} (expires in ${expiresSec}s)`);
+    console.log(`[TOKEN] Created: ${token} (expires in ${expiresSec}s)`);
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: `/_download/${token}/${encodeURIComponent(filenameForToken)}`,
-      "Cache-Control": "no-store"
-    }
-  });
+    return new Response(null, {
+        status: 302,
+        headers: {
+            Location: `/_download/${token}/${encodeURIComponent(filenameForToken)}`,
+            "Cache-Control": "no-store"
+        }
+    });
 }
 
 
@@ -625,9 +639,9 @@ async function createDownloadToken(pathname, filetype, searchParams, env, crypt,
  * Generate admin panel HTML
  */
 function getAdminHTML(env) {
-  const apiUrl = '';
+    const apiUrl = '';
 
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
