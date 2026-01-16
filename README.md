@@ -125,17 +125,12 @@ curl "http://localhost:8788/share?key=yourapi&q=url" -d "https://upload.wikimedi
 curl "http://localhost:8788/_forward/yourapi/share/urlsplit/wikipedia/commons/5/57/Dogs_mating_2.jpg" -o wiki.jpg
 
 
-curl "http://localhost:8788/share2?key=yourapi&q=url" -d "https://en.wikipedia.org/"
+curl "http://localhost:8788/wiki.json?key=yourapi&q=url" -d "https://en.wikipedia.org/"
 
-curl "http://localhost:8788/_forward/yourapi/share2/urlsplit/wiki/Kangaroo_rat"
+curl "http://localhost:8788/_forward/yourapi/wiki.json/urlsplit/wiki/Kangaroo_rat" -i
 
 
 # binary
 curl "http://localhost:8788/test/wiki.jpg?key=yourapi" --data-binary @./wiki.jpg
 curl -sSL -o wiki2.jpg "http://localhost:8788/test/wiki.jpg?key=yourapi&download"
-
-# openlist
-curl "http://localhost:8788/openlist/config?key=yourapi&q=url" -d "https://consistency-fireplace-jane-sufficient.trycloudflare.com"
-
-
 ```
