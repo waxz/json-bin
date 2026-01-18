@@ -217,6 +217,25 @@ export async function processRequest(request, config) {
 }
 
 export async function forwardRequest(request, config) {
+  const isWebSocket = request.headers.get("Upgrade") === "websocket";
+
+  // 1. If it's a WebSocket, we cannot use a timeout (the connection must stay open).
+  if (isWebSocket) {
+    try {
+      const response = await fetch(request);
+      // If the backend accepts the upgrade (Status 101), return the raw response object.
+      // Do not try to wrap it in 'new Response()', as that throws the RangeError.
+      if (response.status === 101) {
+        return response;
+      }
+      // If the handshake failed (e.g. 403 Forbidden), wrap it normally so we can add headers later.
+      return new Response(response.body, response);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // 2. Standard HTTP Request Logic (with Timeout)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
@@ -237,11 +256,11 @@ export async function forwardRequest(request, config) {
     throw error;
   }
 }
-
 export function addCORSHeaders(response, request, config) {
-  // FIX: WebSockets return status 101, which causes "new Response()" to throw a RangeError.
-  // If status is outside 200-599, return original response without modifying headers.
-  if (response.status < 200 || response.status > 599) {
+  // FIX: WebSockets return status 101.
+  // The 'new Response()' constructor throws a RangeError for status codes outside 200-599.
+  // If status is 101, return the original response immediately to maintain the open socket.
+  if (response.status === 101 || response.status < 200 || response.status > 599) {
     return response;
   }
 
