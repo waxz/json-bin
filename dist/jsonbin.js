@@ -211,7 +211,7 @@ async function handleForward(pathname, forwardPathname, request, env, { crypt, q
         targetUrl: targetUrl,
         forwardPathname: forwardPathname,
         allowedOrigins: ['*'],
-        timeout: 200
+        timeout: 10000
     };
     
     const processedRequest = await processRequest(request, forwardConfig);

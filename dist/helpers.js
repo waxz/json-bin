@@ -239,6 +239,12 @@ export async function forwardRequest(request, config) {
 }
 
 export function addCORSHeaders(response, request, config) {
+  // FIX: WebSockets return status 101, which causes "new Response()" to throw a RangeError.
+  // If status is outside 200-599, return original response without modifying headers.
+  if (response.status < 200 || response.status > 599) {
+    return response;
+  }
+
   const newHeaders = new Headers(response.headers);
   const corsHeaders = getCORSHeaders(request, config.allowedOrigins);
 
