@@ -799,19 +799,19 @@ function getAdminHTML(env) {
             },
 
             renderJsonEditor(content) {
-                document.getElementById('editorContainer').innerHTML = \`<div class="form-group" style="flex:1; display:flex; flex-direction:column;">
+                document.getElementById('editorContainer').innerHTML = \`\${this.getActions()}<div class="form-group" style="flex:1; display:flex; flex-direction:column;">
                     <textarea id="editContent" class="form-control" spellcheck="false" style="flex:1;">\${content}</textarea>
-                </div>\${this.getActions()}\`;
+                </div>\`;
             },
 
             renderTextEditor(content, isMd) {
                 const tabs = isMd ? \`<div class="tabs"><div class="tab active" onclick="app.tab('edit')">Edit</div><div class="tab" onclick="app.tab('view')">Preview</div></div>\` : '';
                 const preview = isMd ? \`<div id="mdPreview" class="md-preview hidden"></div>\` : '';
-                document.getElementById('editorContainer').innerHTML = \`\${tabs}
+                document.getElementById('editorContainer').innerHTML = \`\${this.getActions()}\${tabs}
                     <div class="form-group" style="flex:1; display:flex; flex-direction:column;">
                         <textarea id="editContent" class="form-control" spellcheck="false" style="flex:1;">\${content}</textarea>
                         \${preview}
-                    </div>\${this.getActions()}\`;
+                    </div>\`;
                 if(isMd) document.getElementById('mdPreview').innerHTML = marked.parse(content);
             },
 
@@ -823,19 +823,19 @@ function getAdminHTML(env) {
             },
 
             renderImageViewer(url, type) {
-                document.getElementById('editorContainer').innerHTML = \`<div style="text-align:center; background:#f0f0f0; padding:20px; border-radius:8px;">
+                document.getElementById('editorContainer').innerHTML = \`\${this.getActions()}<div style="text-align:center; background:#f0f0f0; padding:20px; border-radius:8px;">
                     <img src="\${url}" style="max-width:100%; box-shadow:0 2px 5px rgba(0,0,0,0.1)">
                     <p style="margin-top:10px; color:#666">\${type}</p>
-                </div>\${this.getActions()}\`;
+                </div>\`;
                 document.querySelector('.btn-success').style.display = 'none'; 
             },
 
             renderBinaryViewer(type) {
-                document.getElementById('editorContainer').innerHTML = \`<div style="text-align:center; padding:40px; background:#f8f9fa; border-radius:8px;">
+                document.getElementById('editorContainer').innerHTML = \`\${this.getActions()}<div style="text-align:center; padding:40px; background:#f8f9fa; border-radius:8px;">
                     <div style="font-size:3rem;">💾</div><h3>Binary File</h3><p>\${type}</p>
                     <div class="form-group" style="margin-top:20px;"><input type="file" id="replaceFile" class="form-control"></div>
                     <button class="btn btn-success" onclick="app.uploadReplacement()">⬆️ Replace Content</button>
-                </div>\${this.getActions()}\`;
+                </div>\`;
                 document.querySelector('.editor-actions .btn-success').style.display = 'none'; 
             },
 
