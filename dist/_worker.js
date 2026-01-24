@@ -1,36 +1,47 @@
-import { Hono } from 'hono';
 import { handleRequest } from './jsonbin.js';
 
-const app = new Hono();
+// Standard CORS headers to allow browser access
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-// Global error handler
-app.onError((err, c) => {
-  console.error('Unhandled error in Hono app', err);
-  return c.text('Internal Server Error', 500);
-});
-
-// Delegate all requests to the existing handler in jsonbin.js
-app.all('*', async (c) => {
-  // handleRequest expects (request, env)
-  try {
-    const resp = await handleRequest(c.req, c.env);
-    return resp;
-  } catch (e) {
-    console.error('Error delegating to handleRequest', e);
-    return c.text(e.message || String(e), 500);
-  }
-});
-
-// Export the fetch binding for Cloudflare/wrangler
-// Use handleRequest directly here to ensure bindings (env) are passed unchanged.
 export default {
-  async fetch(request, env) {
-    // Prefer direct delegation to keep behavior identical to previous handler.
+  async fetch(request, env, ctx) {
+    // 1. Handle Preflight (OPTIONS) requests immediately
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     try {
-      return await handleRequest(request, env);
+      // 2. Pass request, env, and ctx (for waitUntil)
+      const response = await handleRequest(request, env, ctx);
+
+      // 3. Attach CORS headers to the response so the UI works
+      const newHeaders = new Headers(response.headers);
+      Object.keys(corsHeaders).forEach(key => newHeaders.set(key, corsHeaders[key]));
+
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders,
+      });
+
     } catch (e) {
-      console.error('Error in handleRequest:', e);
-      return new Response(JSON.stringify({ ok: false, error: e.message || String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      console.error('CRITICAL WORKER ERROR:', e);
+      // Return a clean JSON error
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: e.message || 'Internal Server Error',
+        stack: e.stack 
+      }), { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json', 
+          ...corsHeaders 
+        } 
+      });
     }
   },
 };
