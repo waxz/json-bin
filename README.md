@@ -1,15 +1,14 @@
 # json-bin
 
 A simple json store based on cloudflare KV
--  read
--  write
-- auto direct to url
 
 ### Admin
 ```
-https://jsonbin.your-account.workers.dev/_admin
+https://jsonbin.your-account.workers.dev
 ```
+![login](assets/login.png)
 ![admin](assets/admin.png)
+![share](assets/share.png)
 
 ### write
 
