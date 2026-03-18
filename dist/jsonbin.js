@@ -231,7 +231,7 @@ async function handleTokenDownload(request, env) {
                     return new Response(result.value, {
                         headers: {
                             "Content-Type": newMeta.filetype,
-                            "Content-Disposition": `attachment; filename="${sanitizeFilename(filename)}"; filename*=UTF-8''${encodeURIComponent(sanitizeFilename(filename))}`,
+                            "Content-Disposition": `attachment; filename="file"; filename*=UTF-8''${encodeURIComponent(filename)}`,
                             "Content-Length": String(result.value.byteLength || 0),
                             "Cache-Control": "no-store"
                         }
@@ -350,7 +350,7 @@ async function handleGet(pathname, env, { sParam, q, crypt, encbase64, redirect,
     return new Response(value, {
         headers: {
             "Content-Type": filetype,
-            "Content-Disposition": `attachment; filename="${filename}"`,
+            "Content-Disposition": `attachment; filename="file"; filename*=UTF-8''${encodeURIComponent(filename)}`,
             "Content-Length": String(value.byteLength || 0),
             "Cache-Control": "no-store"
         }

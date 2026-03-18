@@ -5,9 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
     <title>JSONBIN Admin Panel</title>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js"></script>
-    <script type="text/javascript" src="static/jquery.qrcode.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script type="text/javascript" src="static/qrcode.js"></script>
+    <script>
+        function generateQRCode(containerId, text, width = 150, height = 150) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+            
+            const qrcode = new QRCode(-1, QRErrorCorrectLevel.H);
+            qrcode.addData(text);
+            qrcode.make();
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            const tileW = width / qrcode.getModuleCount();
+            const tileH = height / qrcode.getModuleCount();
+            
+            for (let row = 0; row < qrcode.getModuleCount(); row++) {
+                for (let col = 0; col < qrcode.getModuleCount(); col++) {
+                    ctx.fillStyle = qrcode.isDark(row, col) ? '#000000' : '#ffffff';
+                    const w = Math.ceil((col + 1) * tileW) - Math.floor(col * tileW);
+                    const h = Math.ceil((row + 1) * tileH) - Math.floor(row * tileH);
+                    ctx.fillRect(Math.round(col * tileW), Math.round(row * tileH), w, h);
+                }
+            }
+            container.appendChild(canvas);
+        }
+    </script>
     <style>
         :root {
             --primary: #667eea;
@@ -194,8 +222,59 @@
         }
         .md-preview h1, .md-preview h2, .md-preview h3 { margin: 1em 0 0.5em; }
         .md-preview p { margin: 0.5em 0; }
+        .md-preview ul, .md-preview ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .md-preview li { margin: 0.25em 0; }
+        .md-preview blockquote {
+            border-left: 4px solid var(--primary);
+            margin: 1em 0;
+            padding: 0.5em 1em;
+            background: #f8f9fa;
+            color: var(--gray-700);
+        }
+        .md-preview table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }
+        .md-preview th, .md-preview td {
+            border: 1px solid var(--gray-200);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .md-preview th { background: var(--gray-100); font-weight: 600; }
+        .md-preview tr:nth-child(even) { background: #f9f9f9; }
         .md-preview code { background: var(--gray-100); padding: 2px 6px; border-radius: 4px; }
-        .md-preview pre { background: var(--gray-100); padding: 12px; border-radius: 6px; overflow-x: auto; }
+        .md-preview pre { background: var(--gray-100); padding: 12px; border-radius: 6px; overflow-x: auto; position: relative; }
+        .md-preview pre code { background: none; padding: 0; }
+        .md-preview img { max-width: 100%; height: auto; }
+        .md-preview a { color: var(--primary); }
+        .md-preview hr { border: none; border-top: 1px solid var(--gray-200); margin: 1em 0; }
+        .md-preview input[type="checkbox"] { margin-right: 8px; }
+        .code-copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        .code-copy-btn:hover { opacity: 1; }
+        .code-copy-btn.copied { background: var(--success); color: white; border-color: var(--success); }
+
+        .editor-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .editor-actions .btn-success { order: 1; }
+        .editor-actions .btn-outline { order: 2; }
+        .editor-actions .btn-danger { order: 3; margin-left: auto; }
+        .editor-actions .btn-secondary { order: 4; }
+        .view-toggle { display: flex; gap: 2px; background: var(--gray-100); border-radius: 6px; padding: 2px; order: 5; }
+        .view-toggle .btn { padding: 6px 12px; font-size: 12px; border: none; background: transparent; }
+        .view-toggle .btn.active { background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .view-toggle .btn:not(.active) { color: var(--gray-600); }
 
         .audio-container {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -623,6 +702,20 @@
             key: '',
             items: [],
             current: null,
+            currentObjectUrl: null,
+
+            revokeObjectUrl() {
+                if (this.currentObjectUrl) {
+                    URL.revokeObjectURL(this.currentObjectUrl);
+                    this.currentObjectUrl = null;
+                }
+            },
+
+            setActiveItem(name) {
+                document.querySelectorAll('.item').forEach(el => {
+                    el.classList.toggle('active', decodeURIComponent(el.dataset.name) === name);
+                });
+            },
 
             // ================== AUTH ==================
             login() {
@@ -647,6 +740,7 @@
                 this.key = '';
                 this.items = [];
                 this.current = null;
+                this.revokeObjectUrl();
                 localStorage.removeItem('jsonbin_key');
                 document.getElementById('authSection').classList.remove('hidden');
                 document.getElementById('mainContent').classList.add('hidden');
@@ -801,7 +895,9 @@
                 if (!item || !item.name) return;
 
                 this.current = { ...item, decryptKey };
-                this.renderList();
+                if (!this.viewMode) this.viewMode = 'view';
+                this.setActiveItem(item.name);
+                this.revokeObjectUrl();
 
                 document.getElementById('editorHeader').classList.remove('hidden');
                 document.getElementById('typeSelector').parentElement.classList.remove('hidden');
@@ -823,19 +919,32 @@
                 try {
                     const res = await fetch(url);
 
-                    if (res.status === 403 && item.enc && !decryptKey) {
+                    if (res.status === 403) {
                         this.renderDecryptForm();
                         return;
                     }
 
                     if (!res.ok) {
-                        throw new Error(await res.text());
+                        let errMsg = `HTTP ${res.status}`;
+                        try { errMsg = await res.text(); } catch (e) {}
+                        throw new Error(errMsg);
                     }
 
                     const contentType = res.headers.get('content-type') || 'application/octet-stream';
                     this.setSelectorValue(contentType);
+                    this._currentContentType = contentType;
 
-                    if (contentType.includes('json')) {
+                    const isEditable = contentType.includes('json') || contentType.includes('markdown') || contentType.startsWith('text/') || contentType.includes('xml');
+
+                    if (!isEditable) {
+                        try {
+                            const blob = await res.blob();
+                            this.currentObjectUrl = URL.createObjectURL(blob);
+                            this.renderFileViewer(this.currentObjectUrl, contentType);
+                        } catch (blobErr) {
+                            this.renderBinaryViewer(contentType);
+                        }
+                    } else if (contentType.includes('json')) {
                         const txt = await res.text();
                         try {
                             const json = JSON.parse(txt);
@@ -843,20 +952,9 @@
                         } catch (e) {
                             this.renderTextEditor(txt, false);
                         }
-                    } else if (contentType.startsWith('image/')) {
-                        const blob = await res.blob();
-                        this.renderImageViewer(URL.createObjectURL(blob), contentType);
-                    } else if (contentType.startsWith('audio/')) {
-                        const blob = await res.blob();
-                        this.renderAudioPlayer(URL.createObjectURL(blob), contentType);
-                    } else if (contentType.startsWith('video/')) {
-                        const blob = await res.blob();
-                        this.renderVideoPlayer(URL.createObjectURL(blob), contentType);
-                    } else if (contentType.includes('markdown') || contentType.startsWith('text/') || contentType.includes('xml')) {
+                    } else {
                         const txt = await res.text();
                         this.renderTextEditor(txt, contentType.includes('markdown'));
-                    } else {
-                        this.renderBinaryViewer(contentType);
                     }
                 } catch (e) {
                     document.getElementById('editorContainer').innerHTML = `
@@ -879,17 +977,14 @@
                 let shareUrl = `${fullShareUrl.slice(0, Math.min(60,fullShareUrl.length))}...`;
 
                 let url = utils.escapeHtml(fullShareUrl);
-
-                // let qrcode_url = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + url;
-              	jQuery('#qrcode').qrcode('this plugin is great');
-              
+               
                 bar.innerHTML = `
                     <div class="share-info-bar">
                         <span class="share-label">🔗 Shared</span>
                         <span class="share-url" title="${url}">${utils.escapeHtml(shareUrl)}</span>
                         ${hasCode ? '<span class="share-code-display">🔑 ' + utils.escapeHtml(item.code) + '</span>' : ''}
                         <span style="font-size: 12px; color: var(--gray-500);">⏱ ${expiryLabel}</span>
-                        <button class="btn btn-sm btn-outline" onclick="jQuery('#qrcode').empty();jQuery('#qrcode').qrcode('${fullShareUrl}');const overlay = document.getElementById('imageOverlay'); if(overlay){ overlay.style.display = 'flex'; }; app.copyText('${url}');" data-tooltip="Copy link">📋</button>
+                        <button class="btn btn-sm btn-outline" onclick="generateQRCode('qrcode', '${fullShareUrl}');const overlay = document.getElementById('imageOverlay'); if(overlay){ overlay.style.display = 'flex'; }; app.copyText('${url}');" data-tooltip="Copy link">📋</button>
                         <div id="imageOverlay" onclick="this.style.display='none'"  style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000;">
                             <div id="qrcode"></div>
                         </div>
@@ -934,28 +1029,67 @@
             },
 
             // ================== EDITORS ==================
-            getActions() {
+            getActions(isEditable = true) {
                 const downloadUrl = `${this.current.name}?key=${encodeURIComponent(this.key)}${this.current.decryptKey ? '&c=' + encodeURIComponent(this.current.decryptKey) : ''}&dl=1`;
+                const viewMode = this.viewMode || 'edit';
 
                 return `
                     <div class="editor-actions">
-                        <button class="btn btn-success" onclick="app.save()">💾 Save</button>
+                        <button class="btn btn-success" onclick="app.save()" ${viewMode === 'view' ? 'disabled' : ''}>💾 Save</button>
                         <button class="btn btn-outline" onclick="app.showRenameModal()">✏️ Rename</button>
                         <button class="btn btn-outline" onclick="app.showShareModal()">🔗 Share</button>
+                        <div class="view-toggle">
+                            <button class="btn ${viewMode === 'edit' ? 'active' : ''}" onclick="app.setViewMode('edit')">Edit</button>
+                            <button class="btn ${viewMode === 'view' ? 'active' : ''}" onclick="app.setViewMode('view')">View</button>
+                        </div>
                         <button class="btn btn-danger" onclick="app.del()">🗑️ Delete</button>
                         <a href="${utils.escapeHtml(downloadUrl)}" target="_blank" class="btn btn-secondary">⬇️ Download</a>
                     </div>`;
             },
 
+            setViewMode(mode) {
+                if (this.viewMode === mode) return;
+                this.viewMode = mode;
+                if (this.current) {
+                    this.open(this.current, this.current.decryptKey);
+                }
+            },
+
             renderJsonEditor(content) {
-                document.getElementById('editorContainer').innerHTML = `
-                    ${this.getActions()}
-                    <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
-                        <textarea id="editContent" class="form-control" spellcheck="false" style="flex: 1;">${utils.escapeHtml(content)}</textarea>
-                    </div>`;
+                const isViewMode = this.viewMode === 'view';
+                if (isViewMode) {
+                    document.getElementById('editorContainer').innerHTML = `
+                        ${this.getActions()}
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <pre id="jsonView" class="form-control" style="flex: 1; overflow: auto; white-space: pre-wrap; word-break: break-all; background: #f8f9fa;">${utils.escapeHtml(content)}</pre>
+                        </div>`;
+                    this.addCopyButtonsToCodeBlocks();
+                } else {
+                    document.getElementById('editorContainer').innerHTML = `
+                        ${this.getActions()}
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <textarea id="editContent" class="form-control" spellcheck="false" style="flex: 1;">${utils.escapeHtml(content)}</textarea>
+                        </div>`;
+                }
             },
 
             renderTextEditor(content, isMd) {
+                const isViewMode = this.viewMode === 'view';
+                
+                if (isViewMode && isMd) {
+                    document.getElementById('editorContainer').innerHTML = `
+                        ${this.getActions()}
+                        <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <div id="mdPreview" class="md-preview" style="flex: 1;"></div>
+                        </div>`;
+                    if (typeof marked !== 'undefined') {
+                        marked.setOptions({ gfm: true, breaks: true });
+                        document.getElementById('mdPreview').innerHTML = marked.parse(content);
+                        this.addCopyButtonsToCodeBlocks();
+                    }
+                    return;
+                }
+
                 const tabs = isMd ? `
                     <div class="tabs">
                         <div class="tab active" onclick="app.switchTab('edit')">Edit</div>
@@ -973,8 +1107,34 @@
                     </div>`;
 
                 if (isMd && typeof marked !== 'undefined') {
-                    document.getElementById('mdPreview').innerHTML = marked.parse(content);
+                    marked.setOptions({ gfm: true, breaks: true });
+                    const html = marked.parse(content);
+                    document.getElementById('mdPreview').innerHTML = html;
+                    this.addCopyButtonsToCodeBlocks();
                 }
+            },
+
+            addCopyButtonsToCodeBlocks() {
+                document.querySelectorAll('#mdPreview pre').forEach(pre => {
+                    if (pre.querySelector('.code-copy-btn')) return;
+                    const code = pre.querySelector('code');
+                    const codeText = code ? code.textContent : pre.textContent;
+                    const btn = document.createElement('button');
+                    btn.className = 'code-copy-btn';
+                    btn.textContent = 'Copy';
+                    btn.onclick = (e) => {
+                        navigator.clipboard.writeText(codeText).then(() => {
+                            btn.textContent = 'Copied!';
+                            btn.classList.add('copied');
+                            setTimeout(() => {
+                                btn.textContent = 'Copy';
+                                btn.classList.remove('copied');
+                            }, 2000);
+                        });
+                    };
+                    pre.style.position = 'relative';
+                    pre.appendChild(btn);
+                });
             },
 
             switchTab(mode) {
@@ -989,7 +1149,9 @@
                     tabs[1].classList.remove('active');
                 } else {
                     if (typeof marked !== 'undefined') {
+                        marked.setOptions({ gfm: true, breaks: true });
                         preview.innerHTML = marked.parse(edit.value);
+                        this.addCopyButtonsToCodeBlocks();
                     }
                     edit.classList.add('hidden');
                     preview.classList.remove('hidden');
@@ -1073,6 +1235,74 @@
                         if (durationEl) durationEl.textContent = 'Duration: ' + utils.formatDuration(video.duration);
                     });
                 }
+            },
+
+            renderFileViewer(url, type) {
+                const isViewMode = this.viewMode === 'view';
+                const contentType = this._currentContentType || type;
+                const isImage = contentType.startsWith('image/');
+                const isAudio = contentType.startsWith('audio/');
+                const isVideo = contentType.startsWith('video/');
+                const isPdf = contentType.includes('pdf');
+                
+                let viewerHtml = '';
+                
+                if (isImage) {
+                    viewerHtml = `<img src="${url}" style="max-width: 100%; max-height: 60vh; object-fit: contain; border-radius: 8px;">`;
+                } else if (isAudio) {
+                    const icon = utils.getAudioIcon(contentType);
+                    viewerHtml = `
+                        <div class="audio-container" style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                            <div class="audio-icon">${icon}</div>
+                            <audio id="audioElement" controls preload="metadata" style="max-width: 500px; margin: 20px auto;">
+                                <source src="${url}" type="${contentType}">
+                            </audio>
+                        </div>`;
+                } else if (isVideo) {
+                    viewerHtml = `
+                        <video id="videoElement" controls preload="metadata" style="max-width: 100%; max-height: 60vh; border-radius: 8px;">
+                            <source src="${url}" type="${contentType}">
+                        </video>`;
+                } else if (isPdf) {
+                    viewerHtml = `<iframe src="${url}" style="flex: 1; border: none; width: 100%; height: 100%; min-height: 60vh; background: #525659; border-radius: 8px;"></iframe>`;
+                } else {
+                    const filename = this.current.filename || this.current.name.split('/').pop() || 'File';
+                    viewerHtml = `
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 4rem; margin-bottom: 15px;">📦</div>
+                            <h3>${utils.escapeHtml(filename)}</h3>
+                            <p style="color: #666;">${utils.escapeHtml(contentType)}</p>
+                        </div>`;
+                }
+
+                let uploadHtml = '';
+                if (!isViewMode) {
+                    uploadHtml = `
+                        <div class="form-group" style="max-width: 300px; margin: 20px auto 0;">
+                            <label>Replace with new file</label>
+                            <input type="file" id="replaceFile" class="form-control" accept="${isImage ? 'image/*' : isAudio ? 'audio/*' : isVideo ? 'video/*' : isPdf ? 'application/pdf' : '*/*'}">
+                        </div>
+                        <button class="btn btn-success" style="margin-top: 15px;" onclick="app.uploadReplacement()">⬆️ Upload & Replace</button>`;
+                }
+
+                document.getElementById('editorContainer').innerHTML = `
+                    ${this.getActions()}
+                    <div style="flex: 1; display: flex; flex-direction: column; ${isPdf ? 'background: #525659;' : isVideo ? 'background: #1a1a2e;' : isImage ? 'background: #f0f0f0; padding: 20px;' : 'background: #f8f9fa; padding: 20px;'} border-radius: 8px; overflow: auto;">
+                        ${viewerHtml}
+                    </div>
+                    ${uploadHtml}`;
+            },
+
+            renderPdfViewer(url, type) {
+                const filename = this.current.filename || this.current.name.split('/').pop() || 'PDF';
+
+                document.getElementById('editorContainer').innerHTML = `
+                    ${this.getActions()}
+                    <div style="flex: 1; display: flex; flex-direction: column; background: #525659; border-radius: 8px; overflow: hidden;">
+                        <iframe src="${url}" style="flex: 1; border: none; width: 100%; height: 100%; min-height: 60vh;" title="${utils.escapeHtml(filename)}"></iframe>
+                    </div>`;
+                const saveBtn = document.querySelector('.editor-actions .btn-success');
+                if (saveBtn) saveBtn.style.display = 'none';
             },
 
             renderBinaryViewer(type) {
@@ -1264,6 +1494,7 @@
                     if (!res.ok) throw new Error(await res.text());
 
                     this.showAlert('Deleted successfully', 'success');
+                    this.revokeObjectUrl();
                     this.current = null;
                     this.loadItems();
 
@@ -1282,6 +1513,7 @@
             // ================== NEW ITEM ==================
             newItem() {
                 this.current = null;
+                this.revokeObjectUrl();
                 document.getElementById('editorHeader').classList.remove('hidden');
                 document.getElementById('typeSelector').parentElement.classList.add('hidden');
                 document.getElementById('editorTitle').innerText = 'New Item';
