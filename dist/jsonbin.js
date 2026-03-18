@@ -268,7 +268,8 @@ async function handleList(searchParams, env) {
             code: meta.code || "",
             expiresSec: meta.expiresSec ?? "",
             shareActivateStamp: meta.shareActivateStamp || "",
-            encrypted: meta.crypt ? "yes" : "no"
+            encrypted: meta.crypt ? "yes" : "no",
+            note: meta.note || ""
         });
     }
 
@@ -419,6 +420,19 @@ async function handleStore(pathname, request, env, { sParam, q, crypt, encbase64
 
         await env.JSONBIN.put(pathname, result.value, { metadata: meta });
         return jsonOK({ ok: true, name: newName, message: "Name updated" });
+    }
+
+    // UPDATE METADATA (including note)
+    if (searchParams.has("update_meta")) {
+        const body = await request.text();
+        const result = await env.JSONBIN.getWithMetadata(pathname, "arrayBuffer");
+        if (!result || !result.value) return jsonError("Item not found", 404);
+
+        const meta = result.metadata || {};
+        meta.note = body;
+
+        await env.JSONBIN.put(pathname, result.value, { metadata: meta });
+        return jsonOK({ ok: true, message: "Metadata updated" });
     }
 
     // STANDARD STORE

@@ -250,6 +250,39 @@
         .md-preview a { color: var(--primary); }
         .md-preview hr { border: none; border-top: 1px solid var(--gray-200); margin: 1em 0; }
         .md-preview input[type="checkbox"] { margin-right: 8px; }
+
+        .tree-view { font-size: 13px; }
+        .tree-item { cursor: pointer; padding: 6px 8px; border-radius: 4px; transition: background 0.15s; }
+        .tree-item:hover { background: #f0f0f0; }
+        .tree-item.active { background: #eff6ff; border-left: 3px solid var(--primary); }
+        .tree-item-row { display: flex; align-items: center; gap: 6px; }
+        .tree-toggle { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--gray-500); font-size: 10px; cursor: pointer; user-select: none; }
+        .tree-toggle.expanded::after { content: '▼'; }
+        .tree-toggle.collapsed::after { content: '▶'; }
+        .tree-toggle.empty { visibility: hidden; }
+        .tree-icon { width: 16px; text-align: center; }
+        .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-name.starred { color: var(--warning); font-weight: 500; }
+        .tree-children { padding-left: 16px; }
+        .tree-children.collapsed { display: none; }
+
+        .star-btn { cursor: pointer; padding: 2px; font-size: 14px; opacity: 0.5; transition: opacity 0.2s, transform 0.2s; }
+        .star-btn:hover { opacity: 1; transform: scale(1.2); }
+        .star-btn.starred { opacity: 1; color: var(--warning); }
+
+        .sort-bar { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+        .sort-btn { padding: 4px 8px; font-size: 11px; border: 1px solid var(--gray-200); border-radius: 4px; background: white; cursor: pointer; transition: all 0.2s; }
+        .sort-btn:hover { background: var(--gray-100); }
+        .sort-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        .comment-panel { background: #fef9e7; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin-top: 12px; }
+        .comment-panel h4 { margin: 0 0 8px 0; font-size: 13px; color: #92400e; }
+        .comment-textarea { width: 100%; min-height: 60px; padding: 8px; border: 1px solid #fde68a; border-radius: 4px; font-size: 12px; resize: vertical; }
+        .comment-textarea:focus { outline: none; border-color: var(--primary); }
+
+        .view-mode-bar { display: flex; gap: 4px; background: var(--gray-100); border-radius: 6px; padding: 2px; margin-bottom: 10px; }
+        .view-mode-btn { padding: 6px 12px; font-size: 12px; border: none; background: transparent; border-radius: 4px; cursor: pointer; }
+        .view-mode-btn.active { background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .code-copy-btn {
             position: absolute;
             top: 8px;
@@ -538,6 +571,18 @@
                         <button class="btn btn-primary" style="flex:1" onclick="app.newItem()" data-tooltip="Create new item">+ New</button>
                         <button class="btn btn-secondary" style="flex:1" onclick="app.loadItems()" data-tooltip="Refresh list">↻ Refresh</button>
                     </div>
+                    <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap: wrap;">
+                        <div class="view-mode-bar" style="flex:1; min-width: 120px;">
+                            <button class="view-mode-btn active" data-mode="list" onclick="app.setListView('list')" title="List View">☰ List</button>
+                            <button class="view-mode-btn" data-mode="tree" onclick="app.setListView('tree')" title="Tree View">🗂 Tree</button>
+                        </div>
+                        <div class="sort-bar" style="flex:1; min-width: 200px; justify-content: flex-end;">
+                            <button class="sort-btn" onclick="app.setSort('name')" data-sort="name">Name</button>
+                            <button class="sort-btn" onclick="app.setSort('size')" data-sort="size">Size</button>
+                            <button class="sort-btn" onclick="app.setSort('type')" data-sort="type">Type</button>
+                            <button class="sort-btn" onclick="app.setSort('starred')" data-sort="starred">★</button>
+                        </div>
+                    </div>
                     <input type="text" id="searchBox" class="form-control" placeholder="🔍 Search items..." oninput="app.handleSearch()">
                     <div id="itemsList" class="items-list"></div>
                 </div>
@@ -564,6 +609,7 @@
                     </div>
                     <div id="shareInfoBar"></div>
                     <div id="alertArea"></div>
+                    <div id="commentPanel"></div>
                     <div id="editorContainer" style="flex: 1; display: flex; flex-direction: column;">
                         <div class="empty-state">
                             <div class="empty-state-icon">📄</div>
@@ -703,6 +749,12 @@
             items: [],
             current: null,
             currentObjectUrl: null,
+            viewMode: 'list',
+            sortBy: 'name',
+            sortAsc: true,
+            expandedFolders: {},
+            starredItems: JSON.parse(localStorage.getItem('starredItems') || '[]'),
+            comments: JSON.parse(localStorage.getItem('itemComments') || '{}'),
 
             revokeObjectUrl() {
                 if (this.currentObjectUrl) {
@@ -712,9 +764,42 @@
             },
 
             setActiveItem(name) {
-                document.querySelectorAll('.item').forEach(el => {
+                document.querySelectorAll('.tree-item, .item').forEach(el => {
                     el.classList.toggle('active', decodeURIComponent(el.dataset.name) === name);
                 });
+            },
+
+            toggleStar(name) {
+                const idx = this.starredItems.indexOf(name);
+                if (idx > -1) {
+                    this.starredItems.splice(idx, 1);
+                } else {
+                    this.starredItems.push(name);
+                }
+                localStorage.setItem('starredItems', JSON.stringify(this.starredItems));
+                this.renderList();
+            },
+
+            isStarred(name) {
+                return this.starredItems.includes(name) || this.starredItems.includes(decodeURIComponent(name));
+            },
+
+            toggleStarEncoded(encodedName) {
+                const name = decodeURIComponent(encodedName);
+                this.toggleStar(name);
+            },
+
+            saveComment(name, comment) {
+                if (comment.trim()) {
+                    this.comments[name] = comment;
+                } else {
+                    delete this.comments[name];
+                }
+                localStorage.setItem('itemComments', JSON.stringify(this.comments));
+            },
+
+            getComment(name) {
+                return this.comments[name] || '';
             },
 
             // ================== AUTH ==================
@@ -770,7 +855,8 @@
                         shareLink: item.shareLink || '',
                         code: item.code || '',
                         expiresSec: item.expiresSec ?? '',
-                        shareActivateStamp: item.shareActivateStamp || ''
+                        shareActivateStamp: item.shareActivateStamp || '',
+                        note: item.note || ''
                     }));
 
                     this.renderList();
@@ -787,9 +873,52 @@
                 app.renderList();
             }, 200),
 
+            setListView(mode) {
+                this.viewMode = mode;
+                document.querySelectorAll('.view-mode-btn').forEach(btn => {
+                    const btnMode = btn.getAttribute('data-mode');
+                    btn.classList.toggle('active', btnMode === mode);
+                });
+                this.renderList();
+            },
+
+            setSort(by) {
+                if (this.sortBy === by) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortBy = by;
+                    this.sortAsc = true;
+                }
+                document.querySelectorAll('.sort-btn').forEach(btn => {
+                    const isActive = btn.dataset.sort === this.sortBy;
+                    btn.classList.toggle('active', isActive);
+                    if (isActive) btn.textContent = this.sortBy === 'starred' ? '★' + (this.sortAsc ? '↑' : '↓') : btn.dataset.sort + (this.sortAsc ? '↑' : '↓');
+                    else btn.textContent = btn.dataset.sort === 'starred' ? '★' : btn.dataset.sort.charAt(0).toUpperCase() + btn.dataset.sort.slice(1);
+                });
+                this.renderList();
+            },
+
+            getSortedItems(items) {
+                const starred = this.starredItems;
+                return [...items].sort((a, b) => {
+                    if (this.sortBy === 'starred') {
+                        const aStar = starred.includes(a.name) ? 1 : 0;
+                        const bStar = starred.includes(b.name) ? 1 : 0;
+                        return this.sortAsc ? bStar - aStar : aStar - bStar;
+                    }
+                    if (this.sortBy === 'size') {
+                        return this.sortAsc ? (parseInt(a.size) || 0) - (parseInt(b.size) || 0) : (parseInt(b.size) || 0) - (parseInt(a.size) || 0);
+                    }
+                    if (this.sortBy === 'type') {
+                        return this.sortAsc ? a.type.localeCompare(b.type) : b.type.localeCompare(a.type);
+                    }
+                    return this.sortAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+                });
+            },
+
             renderList() {
                 const query = (document.getElementById('searchBox').value || '').toLowerCase();
-                const filtered = this.items.filter(i =>
+                let filtered = this.items.filter(i =>
                     i.name.toLowerCase().includes(query) ||
                     i.filename.toLowerCase().includes(query)
                 );
@@ -802,13 +931,24 @@
                     return;
                 }
 
-                document.getElementById('itemsList').innerHTML = filtered.map((item) => {
+                filtered = this.getSortedItems(filtered);
+
+                if (this.viewMode === 'tree') {
+                    this.renderTreeView(filtered);
+                } else {
+                    this.renderFlatList(filtered);
+                }
+            },
+
+            renderFlatList(items) {
+                document.getElementById('itemsList').innerHTML = items.map((item) => {
                     const isActive = this.current && this.current.name === item.name;
                     const badgeType = this.getBadgeType(item.type);
                     const escapedName = utils.escapeHtml(item.name);
                     const escapedFilename = utils.escapeHtml(item.filename);
                     const hasShare = item.shareLink && item.shareLink !== '-';
                     const hasCode = item.code && item.code !== '-';
+                    const isStarred = this.isStarred(item.name);
 
                     let shareRow = '';
                     if (hasShare) {
@@ -829,8 +969,9 @@
                              tabindex="0"
                              data-name="${encodeURIComponent(item.name)}">
                             <div class="item-header">
-                                <span class="item-name" title="${escapedName}">${escapedName}</span>
-                                <span style="display: flex; gap: 4px;">
+                                <span class="item-name ${isStarred ? 'starred' : ''}" title="${escapedName}">${isStarred ? '★ ' : ''}${escapedName}</span>
+                                <span style="display: flex; gap: 4px; align-items: center;">
+                                    <span class="star-btn ${isStarred ? 'starred' : ''}" onclick="event.stopPropagation(); app.toggleStarEncoded('${encodeURIComponent(item.name)}')">${isStarred ? '★' : '☆'}</span>
                                     ${hasShare ? '<span class="badge badge-shared">🔗</span>' : ''}
                                     ${item.enc ? '<span class="badge badge-lock">🔒</span>' : ''}
                                 </span>
@@ -843,6 +984,80 @@
                             ${shareRow}
                         </div>`;
                 }).join('');
+            },
+
+            renderTreeView(items) {
+                const tree = this.buildTree(items);
+                document.getElementById('itemsList').innerHTML = this.renderTreeNode(tree, '', true);
+            },
+
+            buildTree(items) {
+                const root = { children: {}, isDir: true, name: '' };
+                items.forEach(item => {
+                    const parts = item.name.split('/').filter(p => p);
+                    let node = root;
+                    parts.forEach((part, idx) => {
+                        if (!node.children[part]) {
+                            node.children[part] = { children: {}, isDir: idx < parts.length - 1, name: part, fullPath: parts.slice(0, idx + 1).join('/'), item: idx === parts.length - 1 ? item : null };
+                        }
+                        node = node.children[part];
+                    });
+                });
+                return root;
+            },
+
+            renderTreeNode(node, parentPath = '', isRoot = false) {
+                const children = Object.keys(node.children).sort();
+                if (children.length === 0 && !isRoot) return '';
+
+                return children.map(key => {
+                    const child = node.children[key];
+                    const fullPath = parentPath ? `${parentPath}/${key}` : `/${key}`;
+                    const isExpanded = this.expandedFolders[fullPath];
+                    const isActive = this.current && this.current.name === fullPath;
+                    const hasChildren = Object.keys(child.children).length > 0;
+                    const isStarred = child.item && this.isStarred(fullPath);
+                    const badgeType = child.item ? this.getBadgeType(child.item.type) : 'raw';
+
+                    let html = '';
+                    if (!isRoot) {
+                        html = `
+                            <div class="tree-item ${isActive ? 'active' : ''}" data-name="${encodeURIComponent(fullPath)}">
+                                <div class="tree-item-row">
+                                    <span class="tree-toggle ${hasChildren ? (isExpanded ? 'expanded' : 'collapsed') : 'empty'}" onclick="event.stopPropagation(); app.toggleFolder('${fullPath}')"></span>
+                                    <span class="tree-icon">${child.isDir ? '📁' : this.getFileIcon(child.item?.type)}</span>
+                                    <span class="tree-name ${isStarred ? 'starred' : ''}" onclick="app.openByName('${encodeURIComponent(fullPath)}')">${isStarred ? '★ ' : ''}${utils.escapeHtml(key)}</span>
+                                    <span class="star-btn ${isStarred ? 'starred' : ''}" onclick="event.stopPropagation(); app.toggleStarEncoded('${encodeURIComponent(fullPath)}')">${isStarred ? '★' : '☆'}</span>
+                                    ${child.item ? `<span class="badge badge-${badgeType}" style="font-size: 9px;">${badgeType.toUpperCase()}</span>` : ''}
+                                </div>
+                            </div>`;
+                    }
+
+                    if (hasChildren) {
+                        html += `<div class="tree-children ${isExpanded ? '' : 'collapsed'}" id="tree-${fullPath.replace(/\//g, '_')}">`;
+                        html += this.renderTreeNode(child, fullPath);
+                        html += '</div>';
+                    }
+                    return html;
+                }).join('');
+            },
+
+            toggleFolder(path) {
+                this.expandedFolders[path] = !this.expandedFolders[path];
+                this.renderList();
+            },
+
+            getFileIcon(type) {
+                if (!type) return '📄';
+                if (type.includes('json')) return '📋';
+                if (type.includes('markdown')) return '📝';
+                if (type.includes('text')) return '📄';
+                if (type.startsWith('image/')) return '🖼️';
+                if (type.startsWith('audio/')) return '🎵';
+                if (type.startsWith('video/')) return '🎬';
+                if (type.includes('pdf')) return '📕';
+                if (type.includes('xml')) return '📰';
+                return '📎';
             },
 
             getBadgeType(type) {
@@ -908,6 +1123,7 @@
 
                 // Render share info bar
                 this.renderShareInfoBar(item);
+                await this.renderCommentPanel(item.name);
 
                 document.getElementById('editorContainer').innerHTML = '<div class="loading"><div class="spinner"></div>Loading content...</div>';
 
@@ -1026,6 +1242,68 @@
                     return;
                 }
                 this.open(this.current, key);
+            },
+
+            async renderCommentPanel(itemName) {
+                let comment = '';
+                const item = this.items.find(i => i.name === itemName);
+                if (item && item.note) {
+                    comment = await this.decompressText(item.note);
+                } else {
+                    comment = this.getComment(itemName) || '';
+                }
+                document.getElementById('commentPanel').innerHTML = `
+                    <div class="comment-panel">
+                        <h4>📝 Notes</h4>
+                        <textarea id="commentTextarea" class="comment-textarea" placeholder="Add notes about this item...">${utils.escapeHtml(comment)}</textarea>
+                        <button class="btn btn-primary btn-sm" style="margin-top: 8px;" onclick="app.saveCommentToKV('${encodeURIComponent(itemName)}')">💾 Save</button>
+                    </div>`;
+            },
+
+            async saveCommentToKV(encodedName) {
+                const name = decodeURIComponent(encodedName);
+                const comment = document.getElementById('commentTextarea').value;
+                
+                try {
+                    const compressed = await this.compressText(comment);
+                    const url = `${name}?key=${encodeURIComponent(this.key)}&update_meta=1`;
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain' },
+                        body: compressed
+                    });
+                    
+                    if (!res.ok) throw new Error(await res.text());
+                    
+                    this.saveComment(name, comment);
+                    this.showAlert('Notes saved!', 'success');
+                } catch (e) {
+                    this.showAlert('Failed to save notes: ' + e.message, 'error');
+                }
+            },
+
+            async compressText(text) {
+                if (!text) return '';
+                const stream = new Blob([text]).stream();
+                const compressed = stream.pipeThrough(new CompressionStream('gzip'));
+                const buf = await new Response(compressed).arrayBuffer();
+                return btoa(String.fromCharCode(...new Uint8Array(buf)));
+            },
+
+            async decompressText(base64) {
+                if (!base64) return '';
+                try {
+                    const binary = atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    const stream = new Blob([bytes]).stream();
+                    const decompressed = stream.pipeThrough(new DecompressionStream('gzip'));
+                    return await new Response(decompressed).text();
+                } catch (e) {
+                    return base64;
+                }
             },
 
             // ================== EDITORS ==================
@@ -1518,6 +1796,7 @@
                 document.getElementById('typeSelector').parentElement.classList.add('hidden');
                 document.getElementById('editorTitle').innerText = 'New Item';
                 document.getElementById('shareInfoBar').innerHTML = '';
+                document.getElementById('commentPanel').innerHTML = '';
 
                 document.getElementById('editorContainer').innerHTML = `
                     <form onsubmit="event.preventDefault(); app.create();">
@@ -1528,10 +1807,18 @@
 
                         <div class="form-group">
                             <label>Content Type</label>
-                            <div style="display: flex; gap: 20px; margin-top: 5px;">
+                            <div style="display: flex; gap: 20px; margin-top: 5px; flex-wrap: wrap;">
                                 <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                                    <input type="radio" name="newMode" value="text" checked onchange="app.toggleNewMode()">
-                                    Text / JSON
+                                    <input type="radio" name="newMode" value="json" checked onchange="app.toggleNewMode()">
+                                    JSON
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <input type="radio" name="newMode" value="text" onchange="app.toggleNewMode()">
+                                    Text
+                                </label>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <input type="radio" name="newMode" value="markdown" onchange="app.toggleNewMode()">
+                                    Markdown
                                 </label>
                                 <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                                     <input type="radio" name="newMode" value="file" onchange="app.toggleNewMode()">
@@ -1540,9 +1827,28 @@
                             </div>
                         </div>
 
-                        <div id="grpText" class="form-group">
+                        <div id="grpJson" class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <div class="tabs" style="margin-bottom: 8px;">
+                                <div class="tab active" onclick="app.toggleNewJsonTab('edit')">Edit</div>
+                                <div class="tab" onclick="app.toggleNewJsonTab('preview')">Preview</div>
+                            </div>
+                            <textarea id="newJsonContent" class="form-control" placeholder='{"key": "value"}' style="flex: 1; min-height: 200px;" oninput="app.validateJson()"></textarea>
+                            <div id="newJsonStatus" style="margin-top: 4px; font-size: 12px;"></div>
+                            <div id="newJsonPreview" class="md-preview hidden" style="flex: 1; min-height: 200px; font-family: monospace; font-size: 13px;"></div>
+                        </div>
+
+                        <div id="grpText" class="form-group hidden">
                             <label>Content</label>
-                            <textarea id="newContent" class="form-control" placeholder='{"key": "value"}'></textarea>
+                            <textarea id="newContent" class="form-control" placeholder="Enter plain text..." style="flex: 1; min-height: 200px;"></textarea>
+                        </div>
+
+                        <div id="grpMarkdown" class="form-group hidden" style="flex: 1; display: flex; flex-direction: column;">
+                            <div class="tabs" style="margin-bottom: 8px;">
+                                <div class="tab active" onclick="app.toggleNewMdTab('edit')">Edit</div>
+                                <div class="tab" onclick="app.toggleNewMdTab('preview')">Preview</div>
+                            </div>
+                            <textarea id="newMdContent" class="form-control" placeholder="# Hello&#10;&#10;Write your markdown here..." style="flex: 1; min-height: 200px;"></textarea>
+                            <div id="newMdPreview" class="md-preview hidden" style="flex: 1; min-height: 200px;"></div>
                         </div>
 
                         <div id="grpFile" class="form-group hidden">
@@ -1568,9 +1874,101 @@
             },
 
             toggleNewMode() {
-                const isFile = document.querySelector('input[name="newMode"][value="file"]').checked;
-                document.getElementById('grpText').classList.toggle('hidden', isFile);
-                document.getElementById('grpFile').classList.toggle('hidden', !isFile);
+                const mode = document.querySelector('input[name="newMode"]:checked').value;
+                document.getElementById('grpJson').classList.toggle('hidden', mode !== 'json');
+                document.getElementById('grpText').classList.toggle('hidden', mode !== 'text');
+                document.getElementById('grpMarkdown').classList.toggle('hidden', mode !== 'markdown');
+                document.getElementById('grpFile').classList.toggle('hidden', mode !== 'file');
+                if (mode === 'json') this.validateJson();
+            },
+
+            validateJson() {
+                const textarea = document.getElementById('newJsonContent');
+                const status = document.getElementById('newJsonStatus');
+                const value = textarea.value.trim();
+                
+                if (!value) {
+                    status.innerHTML = '';
+                    return true;
+                }
+                
+                try {
+                    const parsed = JSON.parse(value);
+                    const formatted = JSON.stringify(parsed, null, 2);
+                    if (value !== formatted) {
+                        textarea.value = formatted;
+                    }
+                    status.innerHTML = '<span style="color: #22c55e;">✓ Valid JSON</span>';
+                    return true;
+                } catch (e) {
+                    status.innerHTML = `<span style="color: #ef4444;">✕ Invalid JSON: ${e.message}</span>`;
+                    return false;
+                }
+            },
+
+            toggleNewJsonTab(tab) {
+                const edit = document.getElementById('newJsonContent');
+                const preview = document.getElementById('newJsonPreview');
+                const status = document.getElementById('newJsonStatus');
+                const tabs = document.querySelectorAll('#grpJson .tab');
+
+                if (tab === 'edit') {
+                    edit.classList.remove('hidden');
+                    preview.classList.add('hidden');
+                    tabs[0].classList.add('active');
+                    tabs[1].classList.remove('active');
+                } else {
+                    if (this.validateJson()) {
+                        try {
+                            const parsed = JSON.parse(edit.value);
+                            preview.innerHTML = this.syntaxHighlightJson(parsed);
+                        } catch (e) {
+                            preview.innerHTML = '<span style="color: #ef4444;">Invalid JSON</span>';
+                        }
+                    }
+                    edit.classList.add('hidden');
+                    preview.classList.remove('hidden');
+                    tabs[0].classList.remove('active');
+                    tabs[1].classList.add('active');
+                }
+            },
+
+            syntaxHighlightJson(obj) {
+                const json = JSON.stringify(obj, null, 2);
+                return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+                    let cls = 'number';
+                    if (/^"/.test(match)) {
+                        cls = /:$/.test(match) ? 'key' : 'string';
+                    } else if (/true|false/.test(match)) {
+                        cls = 'boolean';
+                    } else if (/null/.test(match)) {
+                        cls = 'null';
+                    }
+                    return `<span style="color: ${cls === 'key' ? '#881391' : cls === 'string' ? '#0d7a0d' : cls === 'number' ? '#0550ae' : cls === 'boolean' ? '#0550ae' : '#d12f1b'};">${match}</span>`;
+                }).replace(/[{}\[\]]/g, (m) => `<span style="color: #d12f1b;">${m}</span>`);
+            },
+
+            toggleNewMdTab(tab) {
+                const edit = document.getElementById('newMdContent');
+                const preview = document.getElementById('newMdPreview');
+                const tabs = document.querySelectorAll('#grpMarkdown .tab');
+
+                if (tab === 'edit') {
+                    edit.classList.remove('hidden');
+                    preview.classList.add('hidden');
+                    tabs[0].classList.add('active');
+                    tabs[1].classList.remove('active');
+                } else {
+                    if (typeof marked !== 'undefined') {
+                        marked.setOptions({ gfm: true, breaks: true });
+                        preview.innerHTML = marked.parse(edit.value);
+                        this.addCopyButtonsToCodeBlocks();
+                    }
+                    edit.classList.add('hidden');
+                    preview.classList.remove('hidden');
+                    tabs[0].classList.remove('active');
+                    tabs[1].classList.add('active');
+                }
             },
 
             suggestPath(input) {
@@ -1591,7 +1989,7 @@
 
                 const key = document.getElementById('newKey').value;
                 const filename = document.getElementById('newFilename').value.trim();
-                const isFile = document.querySelector('input[name="newMode"][value="file"]').checked;
+                const mode = document.querySelector('input[name="newMode"]:checked').value;
 
                 let url = `${path}?key=${encodeURIComponent(this.key)}`;
                 if (filename) url += `&filename=${encodeURIComponent(filename)}`;
@@ -1599,7 +1997,7 @@
 
                 let body, contentType;
 
-                if (isFile) {
+                if (mode === 'file') {
                     const fileInput = document.getElementById('newFile');
                     if (!fileInput || !fileInput.files[0]) {
                         this.showAlert('Please select a file', 'error');
@@ -1608,15 +2006,21 @@
                     body = fileInput.files[0];
                     contentType = body.type || 'application/octet-stream';
                     url += '&s=raw';
+                } else if (mode === 'json') {
+                    if (!this.validateJson()) {
+                        this.showAlert('Please enter valid JSON', 'error');
+                        return;
+                    }
+                    body = document.getElementById('newJsonContent').value;
+                    contentType = 'application/json';
+                } else if (mode === 'markdown') {
+                    body = document.getElementById('newMdContent').value;
+                    contentType = 'text/markdown';
+                    url += '&s=raw';
                 } else {
                     body = document.getElementById('newContent').value;
-                    try {
-                        JSON.parse(body);
-                        contentType = 'application/json';
-                    } catch (e) {
-                        contentType = 'text/plain';
-                        url += '&s=raw';
-                    }
+                    contentType = 'text/plain';
+                    url += '&s=raw';
                 }
 
                 try {
@@ -1757,15 +2161,15 @@
 
         // ================== EVENT DELEGATION ==================
         document.getElementById('itemsList').addEventListener('click', (e) => {
-            const itemEl = e.target.closest('.item');
-            if (itemEl && itemEl.dataset.name) {
+            const itemEl = e.target.closest('.item, .tree-item');
+            if (itemEl && itemEl.dataset.name && !e.target.classList.contains('star-btn') && !e.target.classList.contains('tree-toggle')) {
                 app.openByName(itemEl.dataset.name);
             }
         });
 
         document.getElementById('itemsList').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
-                const itemEl = e.target.closest('.item');
+                const itemEl = e.target.closest('.item, .tree-item');
                 if (itemEl && itemEl.dataset.name) {
                     app.openByName(itemEl.dataset.name);
                 }
