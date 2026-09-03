@@ -49,17 +49,17 @@ export default {
 
     } catch (e) {
       console.error('CRITICAL WORKER ERROR:', e);
-      // Return a clean JSON error
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: e.message || 'Internal Server Error',
-        stack: e.stack 
-      }), { 
-        status: 500, 
-        headers: { 
-          'Content-Type': 'application/json', 
-          ...corsHeaders 
-        } 
+      // Return a clean JSON error. Never expose the stack trace to clients -
+      // it can leak internal file paths and implementation details.
+      return new Response(JSON.stringify({
+        success: false,
+        error: e.message || 'Internal Server Error'
+      }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
       });
     }
   },

@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
     <title>JSONBIN Admin Panel</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script type="text/javascript" src="static/qrcode.js"></script>
     <script>
         function generateQRCode(containerId, text, width = 150, height = 150) {
@@ -700,6 +701,16 @@
                 return div.innerHTML;
             },
 
+            // Markdown can contain raw HTML/script; marked doesn't sanitize
+            // it, so always run the output through DOMPurify before it is
+            // ever assigned to innerHTML.
+            renderMarkdown(source) {
+                if (typeof marked === 'undefined') return utils.escapeHtml(source);
+                marked.setOptions({ gfm: true, breaks: true });
+                const html = marked.parse(source || '');
+                return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : utils.escapeHtml(source);
+            },
+
             debounce(fn, delay) {
                 let timer;
                 return (...args) => {
@@ -1360,11 +1371,8 @@
                         <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
                             <div id="mdPreview" class="md-preview" style="flex: 1;"></div>
                         </div>`;
-                    if (typeof marked !== 'undefined') {
-                        marked.setOptions({ gfm: true, breaks: true });
-                        document.getElementById('mdPreview').innerHTML = marked.parse(content);
-                        this.addCopyButtonsToCodeBlocks();
-                    }
+                    document.getElementById('mdPreview').innerHTML = utils.renderMarkdown(content);
+                    this.addCopyButtonsToCodeBlocks();
                     return;
                 }
 
@@ -1384,10 +1392,8 @@
                         ${preview}
                     </div>`;
 
-                if (isMd && typeof marked !== 'undefined') {
-                    marked.setOptions({ gfm: true, breaks: true });
-                    const html = marked.parse(content);
-                    document.getElementById('mdPreview').innerHTML = html;
+                if (isMd) {
+                    document.getElementById('mdPreview').innerHTML = utils.renderMarkdown(content);
                     this.addCopyButtonsToCodeBlocks();
                 }
             },
@@ -1426,11 +1432,8 @@
                     tabs[0].classList.add('active');
                     tabs[1].classList.remove('active');
                 } else {
-                    if (typeof marked !== 'undefined') {
-                        marked.setOptions({ gfm: true, breaks: true });
-                        preview.innerHTML = marked.parse(edit.value);
-                        this.addCopyButtonsToCodeBlocks();
-                    }
+                    preview.innerHTML = utils.renderMarkdown(edit.value);
+                    this.addCopyButtonsToCodeBlocks();
                     edit.classList.add('hidden');
                     preview.classList.remove('hidden');
                     tabs[0].classList.remove('active');
@@ -1959,11 +1962,8 @@
                     tabs[0].classList.add('active');
                     tabs[1].classList.remove('active');
                 } else {
-                    if (typeof marked !== 'undefined') {
-                        marked.setOptions({ gfm: true, breaks: true });
-                        preview.innerHTML = marked.parse(edit.value);
-                        this.addCopyButtonsToCodeBlocks();
-                    }
+                    preview.innerHTML = utils.renderMarkdown(edit.value);
+                    this.addCopyButtonsToCodeBlocks();
                     edit.classList.add('hidden');
                     preview.classList.remove('hidden');
                     tabs[0].classList.remove('active');
