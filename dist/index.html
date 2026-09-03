@@ -51,7 +51,8 @@
             --gray-600: #4b5563;
             --gray-700: #374151;
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html { -webkit-text-size-adjust: 100%; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--bg-gradient);
@@ -106,11 +107,32 @@
         }
         @media (max-width: 968px) {
             .content-grid { grid-template-columns: 1fr; height: auto; }
+            .items-list { flex: 0 0 45vh; }
+        }
+        @media (max-width: 640px) {
+            body { padding: 10px; }
+            .panel { padding: 14px; border-radius: 10px; }
+            .header { margin-bottom: 14px; }
+            .header h1 { font-size: 1.15rem; }
+            .content-grid { gap: 12px; }
+            .stats { flex-wrap: wrap; }
+            .stat-card { flex-basis: calc(50% - 5px); }
+            .view-mode-bar, .sort-bar { min-width: 100% !important; }
+            .sort-bar { justify-content: flex-start !important; }
+            .editor-header { flex-direction: column; align-items: stretch; gap: 10px; }
+            .editor-header h2 { max-width: 100%; }
+            .type-select { width: 100%; }
+            .modal { padding: 18px; }
+            .modal-footer { flex-wrap: wrap; }
+            .modal-footer .btn { flex: 1; min-width: 120px; }
+            .btn { padding: 10px 14px; }
+            .tab { padding: 10px 14px; flex: 1; text-align: center; }
         }
 
         .list-panel { display: flex; flex-direction: column; height: 100%; }
         .items-list {
-            height: 300px;         /* Fixed height is required for scrolling */
+            flex: 1;               /* Fill the remaining panel height on tall/laptop screens */
+            min-height: 220px;
             overflow-y: auto;      /* Adds scrollbar only when needed */
             border: 1px solid var(--gray-200);
             border-radius: 8px;
@@ -253,18 +275,19 @@
         .md-preview input[type="checkbox"] { margin-right: 8px; }
 
         .tree-view { font-size: 13px; }
-        .tree-item { cursor: pointer; padding: 6px 8px; border-radius: 4px; transition: background 0.15s; }
+        .tree-item { cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: background 0.15s; }
         .tree-item:hover { background: #f0f0f0; }
+        .tree-item:focus { outline: 2px solid var(--primary); outline-offset: -2px; }
         .tree-item.active { background: #eff6ff; border-left: 3px solid var(--primary); }
-        .tree-item-row { display: flex; align-items: center; gap: 6px; }
-        .tree-toggle { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; color: var(--gray-500); font-size: 10px; cursor: pointer; user-select: none; }
+        .tree-item-row { display: flex; align-items: center; gap: 6px; min-height: 32px; }
+        .tree-toggle { width: 28px; height: 28px; min-width: 28px; display: flex; align-items: center; justify-content: center; color: var(--gray-500); font-size: 10px; cursor: pointer; user-select: none; }
         .tree-toggle.expanded::after { content: '▼'; }
         .tree-toggle.collapsed::after { content: '▶'; }
         .tree-toggle.empty { visibility: hidden; }
-        .tree-icon { width: 16px; text-align: center; }
-        .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tree-icon { width: 18px; text-align: center; }
+        .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 0; }
         .tree-name.starred { color: var(--warning); font-weight: 500; }
-        .tree-children { padding-left: 16px; }
+        .tree-children { padding-left: 14px; border-left: 1px dashed var(--gray-200); margin-left: 13px; }
         .tree-children.collapsed { display: none; }
 
         .star-btn { cursor: pointer; padding: 2px; font-size: 14px; opacity: 0.5; transition: opacity 0.2s, transform 0.2s; }
@@ -760,7 +783,7 @@
             items: [],
             current: null,
             currentObjectUrl: null,
-            viewMode: 'list',
+            listViewMode: 'list',
             sortBy: 'name',
             sortAsc: true,
             expandedFolders: {},
@@ -885,7 +908,7 @@
             }, 200),
 
             setListView(mode) {
-                this.viewMode = mode;
+                this.listViewMode = mode;
                 document.querySelectorAll('.view-mode-btn').forEach(btn => {
                     const btnMode = btn.getAttribute('data-mode');
                     btn.classList.toggle('active', btnMode === mode);
@@ -944,7 +967,7 @@
 
                 filtered = this.getSortedItems(filtered);
 
-                if (this.viewMode === 'tree') {
+                if (this.listViewMode === 'tree') {
                     this.renderTreeView(filtered);
                 } else {
                     this.renderFlatList(filtered);
@@ -999,7 +1022,7 @@
 
             renderTreeView(items) {
                 const tree = this.buildTree(items);
-                document.getElementById('itemsList').innerHTML = this.renderTreeNode(tree, '', true);
+                document.getElementById('itemsList').innerHTML = this.renderTreeNode(tree, '');
             },
 
             buildTree(items) {
@@ -1017,9 +1040,9 @@
                 return root;
             },
 
-            renderTreeNode(node, parentPath = '', isRoot = false) {
+            renderTreeNode(node, parentPath = '') {
                 const children = Object.keys(node.children).sort();
-                if (children.length === 0 && !isRoot) return '';
+                if (children.length === 0) return '';
 
                 return children.map(key => {
                     const child = node.children[key];
@@ -1030,19 +1053,20 @@
                     const isStarred = child.item && this.isStarred(fullPath);
                     const badgeType = child.item ? this.getBadgeType(child.item.type) : 'raw';
 
-                    let html = '';
-                    if (!isRoot) {
-                        html = `
-                            <div class="tree-item ${isActive ? 'active' : ''}" data-name="${encodeURIComponent(fullPath)}">
-                                <div class="tree-item-row">
-                                    <span class="tree-toggle ${hasChildren ? (isExpanded ? 'expanded' : 'collapsed') : 'empty'}" onclick="event.stopPropagation(); app.toggleFolder('${fullPath}')"></span>
-                                    <span class="tree-icon">${child.isDir ? '📁' : this.getFileIcon(child.item?.type)}</span>
-                                    <span class="tree-name ${isStarred ? 'starred' : ''}" onclick="app.openByName('${encodeURIComponent(fullPath)}')">${isStarred ? '★ ' : ''}${utils.escapeHtml(key)}</span>
-                                    <span class="star-btn ${isStarred ? 'starred' : ''}" onclick="event.stopPropagation(); app.toggleStarEncoded('${encodeURIComponent(fullPath)}')">${isStarred ? '★' : '☆'}</span>
-                                    ${child.item ? `<span class="badge badge-${badgeType}" style="font-size: 9px;">${badgeType.toUpperCase()}</span>` : ''}
-                                </div>
-                            </div>`;
-                    }
+                    const encodedPath = encodeURIComponent(fullPath);
+
+                    // Every node (including top-level entries) renders its own
+                    // row - only the synthetic tree root itself has no row.
+                    let html = `
+                        <div class="tree-item ${isActive ? 'active' : ''}" data-name="${encodedPath}" data-isdir="${child.isDir}" tabindex="0">
+                            <div class="tree-item-row">
+                                <span class="tree-toggle ${hasChildren ? (isExpanded ? 'expanded' : 'collapsed') : 'empty'}" onclick="event.stopPropagation(); app.toggleFolderEncoded('${encodedPath}')"></span>
+                                <span class="tree-icon">${child.isDir ? (isExpanded ? '📂' : '📁') : this.getFileIcon(child.item?.type)}</span>
+                                <span class="tree-name ${isStarred ? 'starred' : ''}">${isStarred ? '★ ' : ''}${utils.escapeHtml(key)}</span>
+                                <span class="star-btn ${isStarred ? 'starred' : ''}" onclick="event.stopPropagation(); app.toggleStarEncoded('${encodedPath}')">${isStarred ? '★' : '☆'}</span>
+                                ${child.item ? `<span class="badge badge-${badgeType}" style="font-size: 9px;">${badgeType.toUpperCase()}</span>` : ''}
+                            </div>
+                        </div>`;
 
                     if (hasChildren) {
                         html += `<div class="tree-children ${isExpanded ? '' : 'collapsed'}" id="tree-${fullPath.replace(/\//g, '_')}">`;
@@ -1056,6 +1080,10 @@
             toggleFolder(path) {
                 this.expandedFolders[path] = !this.expandedFolders[path];
                 this.renderList();
+            },
+
+            toggleFolderEncoded(encodedPath) {
+                this.toggleFolder(decodeURIComponent(encodedPath));
             },
 
             getFileIcon(type) {
@@ -2160,10 +2188,18 @@
         });
 
         // ================== EVENT DELEGATION ==================
+        function activateTreeListItem(itemEl) {
+            if (itemEl.dataset.isdir === 'true') {
+                app.toggleFolderEncoded(itemEl.dataset.name);
+            } else {
+                app.openByName(itemEl.dataset.name);
+            }
+        }
+
         document.getElementById('itemsList').addEventListener('click', (e) => {
             const itemEl = e.target.closest('.item, .tree-item');
             if (itemEl && itemEl.dataset.name && !e.target.classList.contains('star-btn') && !e.target.classList.contains('tree-toggle')) {
-                app.openByName(itemEl.dataset.name);
+                activateTreeListItem(itemEl);
             }
         });
 
@@ -2171,7 +2207,8 @@
             if (e.key === 'Enter') {
                 const itemEl = e.target.closest('.item, .tree-item');
                 if (itemEl && itemEl.dataset.name) {
-                    app.openByName(itemEl.dataset.name);
+                    e.preventDefault();
+                    activateTreeListItem(itemEl);
                 }
             }
         });
