@@ -18,7 +18,8 @@ import {
     forwardRequest,
     addCORSHeaders,
     bufferToText,
-    decryptAndDecode
+    decryptAndDecode,
+    timingSafeEqual
 } from './helpers.js';
 
 export async function handleRequest(request, env) {
@@ -73,9 +74,9 @@ export async function handleRequest(request, env) {
         const keyFromQuery = searchParams.get("key");
         const expectedHeader = `Bearer ${APIKEY}`;
 
-        if (authHeader && authHeader !== expectedHeader) {
+        if (authHeader && !timingSafeEqual(authHeader, expectedHeader)) {
             return jsonError("Invalid Authorization header", 401);
-        } else if (keyFromQuery && keyFromQuery !== APIKEY) {
+        } else if (keyFromQuery && !timingSafeEqual(keyFromQuery, APIKEY)) {
             return jsonError("Invalid key query", 401);
         } else if (!authHeader && !keyFromQuery) {
             return jsonError("Missing Authorization or key", 401);
@@ -186,7 +187,7 @@ async function handleTokenDownload(request, env) {
         }
 
         let shared_ok = false;
-        if (shareCode == newMeta.code) {
+        if (timingSafeEqual(shareCode, newMeta.code)) {
             if (newMeta.expiresSec == 1) {
                 shared_ok = true;
             } else {

@@ -11,7 +11,11 @@ function bytesToBinaryString(bytes) {
   return binary;
 }
 
-async function deriveAESKey(key) {
+// Legacy fixed salt, kept only so data encrypted before the per-item random
+// salt was introduced can still be decrypted.
+const LEGACY_SALT = "salt";
+
+async function deriveAESKey(key, salt) {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -23,7 +27,7 @@ async function deriveAESKey(key) {
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: encoder.encode("salt"),
+      salt: typeof salt === "string" ? encoder.encode(salt) : salt,
       iterations: 100000,
       hash: "SHA-256",
     },
@@ -36,10 +40,14 @@ async function deriveAESKey(key) {
 
 // --- encryption helpers ---
 
+// Ciphertext format: "<saltB64>:<ivB64>:<encB64>". A random salt per
+// encryption prevents precomputed (rainbow-table) attacks against the
+// PBKDF2 derivation, which a single fixed salt does not.
 export async function encryptData(data, key) {
   const encoder = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const aesKey = await deriveAESKey(key);
+  const aesKey = await deriveAESKey(key, salt);
 
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
@@ -47,17 +55,29 @@ export async function encryptData(data, key) {
     encoder.encode(data)
   );
 
+  const saltB64 = btoa(bytesToBinaryString(salt));
   const ivB64 = btoa(bytesToBinaryString(iv));
   const encB64 = btoa(bytesToBinaryString(new Uint8Array(encrypted)));
 
-  return ivB64 + ":" + encB64;
+  return saltB64 + ":" + ivB64 + ":" + encB64;
 }
 
 export async function decryptData(ciphertext, key) {
-  const [ivB64, encB64] = ciphertext.split(":");
+  const parts = ciphertext.split(":");
+
+  let salt, ivB64, encB64;
+  if (parts.length === 3) {
+    [ , ivB64, encB64] = parts;
+    salt = base64ToUint8Array(parts[0]);
+  } else {
+    // Legacy two-part format ("iv:enc") produced with the fixed salt.
+    [ivB64, encB64] = parts;
+    salt = LEGACY_SALT;
+  }
+
   const iv = base64ToUint8Array(ivB64);
   const data = base64ToUint8Array(encB64);
-  const aesKey = await deriveAESKey(key);
+  const aesKey = await deriveAESKey(key, salt);
 
   const decrypted = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
@@ -120,6 +140,23 @@ export function generateToken(len = 18) {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// Constant-time string comparison to avoid leaking API key/share-code
+// contents through response-time differences.
+export function timingSafeEqual(a, b) {
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(String(a ?? ""));
+  const bufB = encoder.encode(String(b ?? ""));
+
+  // Compare against a fixed-length view so the loop time doesn't depend on
+  // the length of either input, then fold in a length check.
+  const len = Math.max(bufA.length, bufB.length, 1);
+  let diff = bufA.length ^ bufB.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (bufA[i] || 0) ^ (bufB[i] || 0);
+  }
+  return diff === 0;
 }
 
 export function jsonOK(obj) {
