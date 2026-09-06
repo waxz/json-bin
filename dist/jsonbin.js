@@ -22,6 +22,14 @@ import {
     timingSafeEqual
 } from './helpers.js';
 
+import { checkRateAndBan, recordAuthResult } from './security.js';
+// Define your parameters globally or pull them from an external configuration file
+const securityOptions = {
+  rateLimit: 10,          // Stricter rate limit
+  maxAuthFails: 3,        // Lower tolerance for bad login attempts
+  banDuration: 60000     // Shorter ban duration (1 minutes in ms)
+};
+
 export async function handleRequest(request, env) {
     const JSONBIN = env.JSONBIN;
     if (!JSONBIN) return jsonError("Missing env.JSONBIN", 500);
@@ -32,6 +40,11 @@ export async function handleRequest(request, env) {
     if (request.method === 'OPTIONS') {
         return handleCORS(request, env);
     }
+
+    // 1. Initial Gatekeeping: Rate limits & pre-existing bans
+
+    const rateCheck = checkRateAndBan(request, securityOptions);
+    if (rateCheck instanceof Response) return rateCheck;
 
     try {
         const urlObj = new URL(request.url);
@@ -61,9 +74,20 @@ export async function handleRequest(request, env) {
         const crypt = searchParams.get("c");
         const q = searchParams.get("q");
         const sParam = searchParams.get("s");
+        const listFlag = searchParams.has("list");
+        const encbase64 = searchParams.has("b64");
+        const redirect = searchParams.has("redirect") || searchParams.has("r");
+        const isJson = pathname.endsWith(".json");
+
+
 
         if (pathname.startsWith("/_download/")) {
-            return await handleTokenDownload(request, env);
+            const result =   await handleTokenDownload(request, env);
+            if (result instanceof Response) {
+                return result;
+            }else{
+                return await handleStore(result, request, env, { sParam, q, crypt, encbase64, isJson });
+            }
         }
 
         if (isForward) {
@@ -75,17 +99,19 @@ export async function handleRequest(request, env) {
         const expectedHeader = `Bearer ${APIKEY}`;
 
         if (authHeader && !timingSafeEqual(authHeader, expectedHeader)) {
-            return jsonError("Invalid Authorization header", 401);
+            recordAuthResult(request, false);
+            return jsonError("Authorization Failed: Invalid Authorization header", 401);
         } else if (keyFromQuery && !timingSafeEqual(keyFromQuery, APIKEY)) {
-            return jsonError("Invalid key query", 401);
+            recordAuthResult(request, false);
+            return jsonError("Authorization Failed: Invalid key", 401);
         } else if (!authHeader && !keyFromQuery) {
-            return jsonError("Missing Authorization or key", 401);
+            recordAuthResult(request, false);
+            return jsonError("Authorization Failed: Missing Authorization or key", 401);
         }
+        recordAuthResult(request, true);
 
-        const listFlag = searchParams.has("list");
-        const encbase64 = searchParams.has("b64");
-        const redirect = searchParams.has("redirect") || searchParams.has("r");
-        const isJson = pathname.endsWith(".json");
+
+
 
         if (listFlag) {
             return await handleList(searchParams, env);
@@ -206,6 +232,7 @@ async function handleTokenDownload(request, env) {
 
 
         if (shared_ok) {
+
             const filename = sanitizeFilename(newMeta.filename || path.split("/").pop() || "data");
 
             // check valid url
@@ -215,6 +242,17 @@ async function handleTokenDownload(request, env) {
             }
 
             let forwardPathname = pathname.slice(slice_index);
+            console.log("handleTokenDownload: ",request.method)
+
+            if (request.method === "POST" || request.method === "PATCH") {
+                console.log("handleTokenDownload process post")
+
+                console.log("handleTokenDownload: pathname",pathname)
+                console.log("handleTokenDownload: path",path)
+
+                return path;
+            }
+
 
             if (!forward) {
 
